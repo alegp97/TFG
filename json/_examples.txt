@@ -1,0 +1,91 @@
+
+DATABASE CONF + SQL EXAMPLE:
+
+{
+    "database": {
+        "host": "localhost",
+        "port": 5432,
+        "dbname": "mi_base_de_datos",
+        "user": "admin",
+        "password": "admin",
+        "driver": "org.postgresql.Driver"
+    },
+    "query": {
+        "sql": "SELECT * FROM my_table WHERE created_at >= NOW() - INTERVAL '7 days';",
+        "fetch_limit": 10000
+    }
+}
+
+SPARK CONF EXAMPLE:
+
+{
+    "spark": {
+        "app_name": "TFG_SparkNLP",
+        "master": "local[*]",
+        "use_spark_nlp": true,
+        "executor_memory": "4g",
+        "driver_memory": "2g",
+        "configurations": {
+            "spark.serializer": "org.apache.spark.serializer.KryoSerializer",
+            "spark.kryoserializer.buffer.max": "512m",
+            "spark.sql.execution.arrow.pyspark.enabled": "true",
+            "spark.driver.maxResultSize": "2g"
+        }
+    }
+}
+
+
+MODELS CONF EXAMPLE:
+
+
+{
+    "models": {
+        "marian_translation": {
+            "pipeline_name": "Marian Translation",
+            "stages": [
+                {
+                    "name": "document_assembler",
+                    "params": {
+                        "inputCol": "text",
+                        "outputCol": "document"
+                    }
+                },
+                {
+                    "name": "marian_transformer",
+                    "params": {
+                        "model_name": "opus_mt_en_es",
+                        "inputCol": "document",
+                        "outputCol": "translation"
+                    }
+                }
+            ]
+        },
+        "ner": {
+            "pipeline_name": "Named Entity Recognition",
+            "stages": [
+                {
+                    "name": "document_assembler",
+                    "params": {
+                        "inputCol": "text",
+                        "outputCol": "document"
+                    }
+                },
+                {
+                    "name": "tokenizer",
+                    "params": {
+                        "inputCol": "document",
+                        "outputCol": "token"
+                    }
+                },
+                {
+                    "name": "ner_dl",
+                    "params": {
+                        "model_name": "ner_dl",
+                        "inputCol": "token",
+                        "outputCol": "ner"
+                    }
+                }
+            ]
+        }
+    }
+}

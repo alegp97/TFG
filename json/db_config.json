@@ -1,0 +1,15 @@
+{
+    "database": {
+        "type": "postgresql",
+        "host": "localhost",
+        "port": 5432,
+        "dbname": "mi_base_de_datos",
+        "user": "admin",
+        "password": "1234",
+        "driver": "org.postgresql.Driver"
+    },
+    "query": {
+        "sql": "SELECT * FROM my_table WHERE created_at >= NOW() - INTERVAL '7 days';",
+        "fetch_limit": 10000
+    }
+}

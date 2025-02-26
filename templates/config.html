@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <title>Configuración del Modelo</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            min-height: 100vh;
+        }
+        .container {
+            display: flex;
+            flex-direction: row;
+            justify-content: space-between;
+            width: 90%;
+            margin: 20px auto;
+            flex-grow: 1;
+        }
+        .main-content {
+            width: 65%;
+            padding: 30px;
+            background-color: white;
+            box-shadow: 2px 2px 10px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            min-height: 500px; 
+            max-height: 90vh; 
+            overflow-y: auto; 
+        }
+        .config-panel {
+            width: 30%;
+            padding: 30px;
+            background-color: #f9f9f9;
+            border-left: 3px solid #ddd;
+            box-shadow: 2px 2px 10px rgba(0,0,0,0.1);
+            border-radius: 8px;
+        }
+        textarea {
+            width: 100%;
+            height: 500px;
+            font-family: monospace;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            padding: 10px;
+            resize: vertical;
+            background-color: #fff;
+        }
+        button {
+            width: 100%;
+            padding: 5px;
+            margin-top: 20px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 18px;
+            text-align: center;
+            position: center;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        .upload-btn {
+            background-color: #f39c12;
+            font-size: 14px;
+            padding: 10px;
+            margin-top: 5px;
+            border-radius: 5px;
+        }
+        .upload-btn:hover {
+            background-color: #e67e22;
+        }
+        .delete-btn {
+            background: none;
+            width: 20%;
+            border: none;
+            cursor: pointer;
+            font-size: 15px;
+            margin-left: 1px;
+            color: #e74c3c;
+        }
+        .delete-btn:hover {
+            color: #c0392b;
+        }
+        .launch-container {
+            width: 100%;
+            text-align: center;
+            padding-bottom: 1px;
+        }
+        .launch-btn {
+            background-color: #2ecc71;
+            font-size: 28px;
+            font-weight: bold;
+            padding: 3px;
+            border-radius: 8px;
+            width: 90%;
+            text-align: center;
+        }
+        .launch-btn:hover {
+            background-color: #27ae60;
+        }
+        h1, h2 {
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <!-- Configuración del Modelo -->
+        <div class="main-content">
+            <h1>🛠️ Configurar Pipeline del Modelo: {{ model_key }}</h1>
+            <form action="/save_model_config/{{ model_key }}" method="POST">
+                <h3>📝 Configuración JSON del Pipeline SparkNLP</h3>
+                <textarea name="config_json" spellcheck="false">{{ config }}</textarea>
+                <button type="submit">Guardar Configuración</button>
+            </form>
+        </div>
+
+        <!-- Configuración de la Base de Datos y Selección de Entrada -->
+        <div class="config-panel">
+            <h2>📝 Configuración de la Base de Datos 🧮</h2>
+            <form action="/save_db_config" method="POST">
+                <textarea name="db_json" spellcheck="false">{{ db_config }}</textarea>
+                <button type="submit">Guardar Configuración</button>
+            </form>
+
+            <h3>📌 Seleccionar entrada de datos 🔍</h3>
+            <form id="pipeline-form" action="/run/{{ model_key }}" method="POST">
+                <label><input type="radio" name="input_type" value="sql"> Usar la consulta SQL</label>
+                <br>
+                <label><input type="radio" name="input_type" value="file" checked> Usar el archivo local seleccionado</label>
+
+                <h4>📂 Seleccionar un archivo local</h4>
+                <select name="selected_file" id="selected_file">
+                    <option value="">-- Seleccionar un archivo local --</option>
+                    {% for file in input_files %}
+                        <option value="{{ file }}">{{ file }}</option>
+                    {% endfor %}
+                </select>
+                <!-- Botón para eliminar el archivo seleccionado -->
+                <button type="button" class="delete-btn" onclick="deleteFile()">🗑️(delete)</button>
+            </form>
+
+            <!-- Botón para subir un archivo -->
+            <h4>⬆️ Subir un nuevo archivo</h4>
+            <form action="/upload_file" method="POST" enctype="multipart/form-data">
+                <input type="file" name="file">
+                <button type="submit" class="upload-btn">Subir Archivo</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Botón "Lanzar Pipeline" centrado -->
+    <div class="launch-container">
+        <button type="button" class="launch-btn" onclick="submitPipelineForm()">🚀 Lanzar Pipeline</button>
+    </div>
+
+    <script>
+        function submitPipelineForm() {
+            document.getElementById("pipeline-form").submit();
+        }
+
+        function deleteFile() {
+            let selectedFile = document.getElementById("selected_file").value;
+            if (selectedFile) {
+                fetch("/delete_file", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ filename: selectedFile })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === "success") {
+                        alert("Archivo eliminado: " + selectedFile);
+                        location.reload();
+                    } else {
+                        alert("Error al eliminar archivo: " + data.message);
+                    }
+                });
+            } else {
+                alert("Selecciona un archivo para eliminar.");
+            }
+        }
+    </script>
+
+</body>
+</html>

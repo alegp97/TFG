@@ -1,0 +1,15 @@
+{
+    "spark": {
+        "app_name": "TFG_SparkNLP",
+        "master": "local[*]",
+        "use_spark_nlp": true,
+        "executor_memory": "4g",
+        "driver_memory": "2g",
+        "configurations": {
+            "spark.serializer": "org.apache.spark.serializer.KryoSerializer",
+            "spark.kryoserializer.buffer.max": "512m",
+            "spark.sql.execution.arrow.pyspark.enabled": "true",
+            "spark.driver.maxResultSize": "2g"
+        }
+    }
+}

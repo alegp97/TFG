@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Configuración Spark NLP</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            display: flex;
+            font-family: Arial, sans-serif;
+            height: 100vh;
+            flex-direction: column;
+        }
+
+        .container {
+            display: flex;
+            flex: 1;
+            width: 100%;
+        }
+
+        /* Se ajusta automáticamente al tamaño de la pantalla */
+        .main-content {
+            flex: 2;
+            padding: 20px;
+            font-size: 17px;
+            font-weight: bold;
+        }
+
+        /* Quitar subrayado a TODOS los enlaces */
+        .main-content a, .config-panel a {
+            text-decoration: none;
+            color: #3498db;
+        }
+
+        .main-content a:hover, .config-panel a:hover {
+            text-decoration: underline;
+            color: #2c3e50;
+        }
+
+        /* Configuración de la ventana a la derecha con altura dinámica */
+        .config-panel {
+            flex-grow: 1; 
+            width: 30%;
+            min-width: 320px; /* Para que no sea demasiado estrecho en pantallas pequeñas */
+            padding: 20px;
+            border-left: 2px solid #ddd;
+            background-color: #f9f9f9;
+            overflow-y: auto;
+            max-height: 100vh; /* Se ajusta dinámicamente */
+        }
+
+        /* El textarea se expande dinámicamente */
+        textarea {
+            width: 100%;
+            min-height: 200px;
+            max-height: 60vh; /* Nunca ocupará más del 60% de la pantalla */
+            font-family: monospace;
+            resize: vertical;
+        }
+
+        /* Botones estilizados */
+        button {
+            width: 100%;
+            padding: 10px;
+            margin-top: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+    </style>
+    
+</head>
+<body>
+
+    <div class="container">
+
+        <!-- Contenido principal -->
+        <div class="main-content">
+            <h1>Seleccionar un Modelo de Spark NLP 🚩</h1>
+                <br> </br>
+            <h3>
+                <a href="https://sparknlp.org/">🌟 Agradecimientos a la comunidad Spark NLP -> Ir https://sparknlp.org/ 🌍</a>
+            </h3>
+                <br> </br>
+            <ul>
+                <li><a href="/configure/marian_translation"> Marian Translation </a></li>
+                <li><a href="/configure/ner"> Named Entity Recognition (NER) </a></li>
+            </ul>
+        </div>
+
+
+
+
+        <!-- Ventana de configuración JSON de spark -->
+        <div class="config-panel">
+            <form action="/save_spark_config" method="POST">
+                <h2>⚙️ Configuración de Spark ⭐</h2>
+                <textarea name="config_json" spellcheck="false">{{ spark_config }}</textarea>
+                <button type="submit">Guardar Configuración</button>
+            </form>
+        </div>
+        <script>
+            document.addEventListener("DOMContentLoaded", function () {
+                let textarea = document.querySelector("textarea[name='config_json']");
+                if (textarea) {
+                    textarea.style.height = textarea.scrollHeight + "px"; // Ajusta la altura al contenido inicial
+                }
+            });
+        </script>
+        
+    </div>
+
+</body>
+</html>

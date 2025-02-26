@@ -1,0 +1,51 @@
+{
+    "models": {
+        "marian_translation": {
+            "pipeline_name": "Marian Translation",
+            "stages": [
+                {
+                    "name": "document_assembler",
+                    "params": {
+                        "inputCol": "text",
+                        "outputCol": "document"
+                    }
+                },
+                {
+                    "name": "marian_transformer",
+                    "params": {
+                        "model_name": "opus_mt_en_es",
+                        "inputCol": "document",
+                        "outputCol": "translation"
+                    }
+                }
+            ]
+        },
+        "ner": {
+            "pipeline_name": "Named Entity Recognition",
+            "stages": [
+                {
+                    "name": "document_assembler",
+                    "params": {
+                        "inputCol": "text",
+                        "outputCol": "document"
+                    }
+                },
+                {
+                    "name": "tokenizer",
+                    "params": {
+                        "inputCol": "document",
+                        "outputCol": "token"
+                    }
+                },
+                {
+                    "name": "ner_dl",
+                    "params": {
+                        "model_name": "ner_dl",
+                        "inputCol": "token",
+                        "outputCol": "ner"
+                    }
+                }
+            ]
+        }
+    }
+}

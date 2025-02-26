@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <title>Resultados del Pipeline</title>
+    <!-- ✅ Botón para abrir Spark UI -->
+    <div class="spark-ui-container">
+        <button onclick="openSparkUI()" class="spark-ui-btn">🔍 Abrir Spark UI</button>
+    </div>
+
+    <script>
+        function openSparkUI() {
+            fetch("/spark_ui")
+            .then(response => response.json())
+            .then(data => {
+                if (data.spark_ui_url) {
+                    window.open(data.spark_ui_url, "_blank"); // Abrir en nueva pestaña
+                } else {
+                    alert("⚠️ No se pudo obtener la URL de Spark UI.");
+                }
+            })
+            .catch(error => console.error("Error al obtener la URL de Spark UI:", error));
+        }
+    </script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        .container {
+            max-width: 800px;
+            margin: auto;
+            padding: 20px;
+            background-color: white;
+            box-shadow: 2px 2px 10px rgba(0,0,0,0.1);
+            border-radius: 8px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        #output {
+            background-color: #eee;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            height: 300px;
+            overflow-y: auto;
+        }
+        .back-btn {
+            display: block;
+            margin: 20px auto;
+            padding: 10px;
+            text-align: center;
+            background-color: #3498db;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            width: 200px;
+        }
+        .back-btn:hover {
+            background-color: #2980b9;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>📊 Resultados del Pipeline: {{ model_key }}</h1>
+        
+        <h3>✅ Ejecución en tiempo real:</h3>
+        <div id="output"></div>
+
+        <a href="/" class="back-btn">🔙 Volver al Inicio</a>
+    </div>
+
+    <script>
+        var socket = io();
+        var outputDiv = document.getElementById("output");
+    
+        // 📌 Depuración para ver si WebSockets están funcionando
+        socket.on("connect", function() {
+            console.log("✅ Conectado al servidor WebSocket");
+            console.log("🚀 Enviando evento run_pipeline...");
+    
+            socket.emit("run_pipeline", {
+                model_key: "{{ model_key }}",
+                input_type: "{{ input_type }}",
+                selected_file: "{{ selected_file }}"
+            });
+        });
+    
+        // 📌 Verificar si el servidor responde
+        socket.on("pipeline_output", function(data) {
+            console.log("📩 Respuesta del servidor:", data);
+            outputDiv.innerHTML += data.message + "<br>";
+            outputDiv.scrollTop = outputDiv.scrollHeight;
+        });
+    
+        socket.on("connect_error", (err) => {
+            console.error("❌ Error de conexión con WebSocket:", err);
+        });
+    </script>
+    
+
+</body>
+</html>
