@@ -1,8 +1,80 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f4;
+            text-align: center;
+        }
+
+        .spark-ui-container {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .spark-ui-btn {
+            background-color: #2ecc71;
+            color: white;
+            padding: 12px 20px;
+            font-size: 16px;
+            border: none;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+
+        .spark-ui-btn:hover {
+            background-color: #27ae60;
+        }
+
+        .container {
+            max-width: 90%;
+            margin: auto;
+            padding: 20px;
+            background-color: white;
+            box-shadow: 2px 2px 10px rgba(0,0,0,0.1);
+            border-radius: 8px;
+        }
+
+        h1 {
+            color: #333;
+        }
+
+        #output {
+            background-color: #eee;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            height: 400px; /* Más alto para ver más mensajes */
+            width: 95%; /* 📌 Más ancho, ocupa casi toda la página */
+            margin: auto;
+            text-align: left;
+        }
+
+        .back-btn {
+            display: block;
+            margin: 20px auto;
+            padding: 10px;
+            text-align: center;
+            background-color: #3498db;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            width: 200px;
+        }
+
+        .back-btn:hover {
+            background-color: #2980b9;
+        }
+    </style>
+
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.js"></script>
     <title>Resultados del Pipeline</title>
-    <!-- ✅ Botón para abrir Spark UI -->
+    <!--  Botón para abrir Spark UI -->
     <div class="spark-ui-container">
         <button onclick="openSparkUI()" class="spark-ui-btn">🔍 Abrir Spark UI</button>
     </div>
@@ -20,57 +92,22 @@
             })
             .catch(error => console.error("Error al obtener la URL de Spark UI:", error));
         }
+
+        // Función para mostrar la tabla cuando se haga clic en "Ver Tabla"
+        function showTable() {
+            var tableDiv = document.getElementById("df_table");
+            if (tableDiv) {
+                tableDiv.style.display = "block";
+            }
+        }
     </script>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            padding: 20px;
-            background-color: #f4f4f4;
-        }
-        .container {
-            max-width: 800px;
-            margin: auto;
-            padding: 20px;
-            background-color: white;
-            box-shadow: 2px 2px 10px rgba(0,0,0,0.1);
-            border-radius: 8px;
-        }
-        h1 {
-            color: #333;
-            text-align: center;
-        }
-        #output {
-            background-color: #eee;
-            padding: 15px;
-            border-radius: 5px;
-            overflow-x: auto;
-            white-space: pre-wrap;
-            height: 300px;
-            overflow-y: auto;
-        }
-        .back-btn {
-            display: block;
-            margin: 20px auto;
-            padding: 10px;
-            text-align: center;
-            background-color: #3498db;
-            color: white;
-            text-decoration: none;
-            border-radius: 5px;
-            width: 200px;
-        }
-        .back-btn:hover {
-            background-color: #2980b9;
-        }
-    </style>
 </head>
 <body>
 
     <div class="container">
-        <h1>📊 Resultados del Pipeline: {{ model_key }}</h1>
+        <h1>📊 Resultados del Pipeline de modelo {{ model_key }}</h1>
         
-        <h3>✅ Ejecución en tiempo real:</h3>
+        <h3>Muestra de ejecución: </h3>
         <div id="output"></div>
 
         <a href="/" class="back-btn">🔙 Volver al Inicio</a>
@@ -82,13 +119,13 @@
     
         // 📌 Depuración para ver si WebSockets están funcionando
         socket.on("connect", function() {
-            console.log("✅ Conectado al servidor WebSocket");
-            console.log("🚀 Enviando evento run_pipeline...");
+            console.log("Conectado al servidor WebSocket");
+            console.log("Enviando evento run_pipeline...");
     
             socket.emit("run_pipeline", {
-                model_key: "{{ model_key }}",
                 input_type: "{{ input_type }}",
-                selected_file: "{{ selected_file }}"
+                input_data: "{{ input_data }}",
+                pipeline_config: "{{ pipeline_config }}"
             });
         });
     
@@ -100,7 +137,7 @@
         });
     
         socket.on("connect_error", (err) => {
-            console.error("❌ Error de conexión con WebSocket:", err);
+            console.error(" Error de conexión con WebSocket:", err);
         });
     </script>
     

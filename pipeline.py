@@ -19,11 +19,27 @@ class Pipeline:
         self.pipeline_config = pipeline_config
         self.debug = debug
 
-        # 🚀 1️⃣ Crear sesión de Spark si no existe
-        if not self.spark:
-            self._init_spark_session()
-
     
+    
+    def init_spark_session(self):
+        """Crea la sesión de Spark con la configuración proporcionada."""
+        spark_builder = SparkSession.builder.appName(self.spark_config["spark"]["app_name"])
+
+        for key, value in self.spark_config["spark"]["configurations"].items():
+            spark_builder = spark_builder.config(key, value)
+
+        self.spark = spark_builder.getOrCreate()
+
+        if self.debug:
+            logs = []
+            print("⭐ Sesión de Spark inicializada\n ")
+            print(f"⚙️ Configuraciones finales de Spark\n ")
+            for key, value in self.spark.sparkContext.getConf().getAll():
+                print(f"🔹 {key} = {value}")
+                logs.append(f"🔹 {key} = {value}")
+            return "\n".join(logs)
+        else:
+            return None
 
     def run(self):
         """Ejecuta el pipeline de NLP en Spark"""
@@ -35,14 +51,15 @@ class Pipeline:
             df = self.load_from_local()
         else:
             raise ValueError("Fuente de datos no válida. Use 'sql' o 'local'.")
-
+        
+        print( "Datos cargados con éxito")
+        
+        df_html = df.limit(10).toPandas().to_html(classes="table table-striped", index=False)
+        
         # # 🚀 3️⃣ Aplicar modelo NLP
         # transformed_df = self.apply_nlp_pipeline(df)
 
-        # if self.debug:
-        #     transformed_df.show(5)
-        print("JAJAJA")
-        df.show()
+        return df
     
 
     def apply_nlp_pipeline(self, df):
@@ -59,25 +76,6 @@ class Pipeline:
 
         return transformed_df
     
-
-
-
-
-
-    def _init_spark_session(self):
-        """Crea la sesión de Spark con la configuración proporcionada."""
-        spark_builder = SparkSession.builder.appName(self.spark_config["spark"]["app_name"])
-
-        for key, value in self.spark_config["spark"]["configurations"].items():
-            spark_builder = spark_builder.config(key, value)
-
-        self.spark = spark_builder.getOrCreate()
-
-        if self.debug:
-            print("✅ Sesión de Spark inicializada:")
-            print(f"📊 Configuraciones finales de Spark:")
-            for key, value in self.spark.sparkContext.getConf().getAll():
-                print(f"🔹 {key} = {value}")
 
     def get_spark_session(self):
         """Devuelve la sesión de Spark actual."""
@@ -112,7 +110,7 @@ class Pipeline:
             raise ValueError("Base de datos no soportada")
 
         if self.debug:
-            print(f"📋 Consulta SQL: {sql_query}")
+            print(f"Consulta SQL: {sql_query}")
 
         # Conexión JDBC a la base de datos
         df = self.spark.read.format("jdbc").options(
@@ -131,7 +129,7 @@ class Pipeline:
 
 
     def load_from_local(self):
-        """Carga los datos desde un archivo local."""
+        """Carga los datos desde un archivo local y devuelve una muestra en formato JSON."""
         if self.debug:
             print(f"📂 Cargando archivo local: {self.input_data}")
 
@@ -145,6 +143,9 @@ class Pipeline:
             df = self.spark.read.json(self.input_data)
         else:
             raise ValueError("Formato de archivo no soportado")
+        
+        print("✅ Datos cargados correctamente desde local")
 
         return df
+
 

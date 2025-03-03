@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, jsonify
+from flask import Flask, render_template, request, redirect, url_for, jsonify, make_response
 from flask_socketio import SocketIO
 import json
 import os
@@ -6,7 +6,7 @@ from werkzeug.utils import secure_filename
 from pipeline import Pipeline
 
 app = Flask(__name__)
-socketio = SocketIO(app) 
+socketio = SocketIO(app, cors_allowed_origins="*") 
 
 # ⚙️ Rutas a los archivos de configuración
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))  
@@ -180,31 +180,37 @@ def delete_file():
 # 🚀 Ejecutar Pipeline con datos de SQL o Archivo
 @app.route("/run/<model_key>", methods=["POST"])
 def launch_pipeline(model_key):
+    model_configs = load_model_configs()
 
+    if model_key not in model_configs:
+        return jsonify({"error": "Modelo no encontrado"}), 404
 
     input_type = request.form.get("input_type")
     selected_file = request.form.get("selected_file")
 
     if DEBUG:
         print(f"📢 input_type recibido: {input_type}")
-        print(f"📂 selected_file recibido: {selected_file}")
 
-    # spark_config = load_spark_config()
-    # pipeline_config = model_configs[model_key]
+    pipeline_config = model_configs[model_key]
 
-    # # 📌 Determinar la fuente de datos
-    # if input_type == "sql":
-    #     input_data = load_db_config()  # ✅ Pasamos el JSON completo con la consulta SQL
-    # elif input_type == "file" and selected_file:
-    #     file_path = os.path.join(DATA_INPUT_DIR, selected_file)
-    #     if not os.path.exists(file_path):
-    #         return jsonify({"error": "Archivo no encontrado"}), 404
-    #     input_data = file_path  # ✅ Se pasa solo la ruta como string
-    # else:
-    #     return jsonify({"error": "Entrada no válida"}), 400
+    # Determinar la fuente de datos
+    if input_type == "sql":
+        input_data = load_db_config()  
+    elif input_type == "file" and selected_file:
+        file_path = os.path.join(DATA_INPUT_DIR, selected_file)
+        if not os.path.exists(file_path):
+            return jsonify({"error : ARCHIVO SELECCIONADO NO ENCONTRADO"}), 404
+        print(f"📢 file recibido: {file_path}")
+        input_data = file_path  
+    else:
+        return jsonify("error : ENTRADA INVALIDA, SELECCIONE UN ARCHIVO DE ENTRADA"), 404
 
-    # ✅ Renderizar `results.html` primero, luego ejecutar el pipeline en WebSocket
-    return render_template("results.html", model_key=model_key, input_type=input_type, selected_file=selected_file)
+    # Renderizar `results.html` primero, luego ejecutar el pipeline en WebSocket
+    return render_template("results.html",
+                           input_type=input_type, 
+                           model_key=model_key, 
+                           input_data=input_data, 
+                           pipeline_config=pipeline_config)
 
 
 
@@ -215,37 +221,53 @@ def launch_pipeline(model_key):
 ############################                         ##############################
 """
 pipeline = None
-# 📌 WebSocket: Ejecuta el pipeline en segundo plano y envía las salidas en tiempo real
+# 🚩 WebSocket: Ejecuta el pipeline en segundo plano y envía las salidas en tiempo real
 @socketio.on("run_pipeline")
 def run_pipeline(data):
-    print("JAJAJA")
-    model_key = data.get("model_key")
+    global pipeline
+    print("Evento WebSocket `run_pipeline` recibido en Flask")
+
     input_type = data.get("input_type")
-    selected_file = data.get("selected_file")
-
+    input_data = data.get("input_data")
+    pipeline_config = data.get("pipeline_config")
     spark_config = load_spark_config()
-
-    model_configs = load_model_configs()
-    if model_key not in model_configs:
-        return jsonify({"error": "Modelo no encontrado"}), 404
-    pipeline_config = model_configs[model_key]
-
-    if input_type == "sql":
-        input_data = load_db_config()
-    elif input_type == "file" and selected_file:
-        input_data = {"file_path": os.path.join("data/input", selected_file)}
-    else:
-        socketio.emit("pipeline_output", {"message": "❌ Entrada no válida."})
-        return
-
-    print("JAJAJA")
-
-    # ✅ Inicializar y ejecutar el pipeline en tiempo real
-    global pipeline 
-    pipeline = Pipeline(source=input_type, input_data=input_data, spark_config=spark_config, pipeline_config=pipeline_config, debug=DEBUG)
     
-    for output in pipeline.run(): 
-        socketio.emit("pipeline_output", {"message": output})
+
+    # Inicializar y ejecutar el pipeline en tiempo real
+    print("🚀 Inicializando Pipeline...") 
+    pipeline = Pipeline(source=input_type, 
+                        input_data=input_data, 
+                        spark_config=spark_config, 
+                        pipeline_config=pipeline_config, 
+                        debug=DEBUG)
+    
+    socketio.emit("pipeline_output", {"message": "🚀 Pipeline instanciado.\n ⚙️ Iniciando configuración de ⭐Spark..."})
+    pipeline_init_spark_msg = pipeline.init_spark_session()
+    if pipeline_init_spark_msg:
+        socketio.emit("pipeline_output", {"message": pipeline_init_spark_msg})
+    
+    socketio.emit("pipeline_output", {"message": "🗃️Cargando datos de entrada..."})
+    df = pipeline.load_from_local()
+    socketio.emit("pipeline_output", {"message": "✅ Datos cargados y serializados correctamente."})
+    socketio.emit("pipeline_output", {"message": "Esquema del dataframe: \n" + df.schema.json()})
+
+    if df.explain() is not None:
+        socketio.emit("pipeline_output", {"message": "Spark DataFrame explain: \n" + df.explain()})
+    if df.storageLevel is not None:
+        socketio.emit("pipeline_output", {"message": "Spark DataFrame StorageLevel: " + str(df.storageLevel)})
+
+    # Enviar la tabla con WebSocket, pero solo mostrarla cuando el usuario haga clic en "Ver Tabla"
+    df_html = df.limit(10).toPandas().to_html()
+    socketio.emit("pipeline_output", 
+              {"message": "<button onclick='showTable()' class='view-table-btn'>📋 Ver Muestra </button><div id='df_table' style='display:none;'>" + df_html + "</div>"})
+    
+
+    # # ✅ Capturar salida de `run()` con los prints internos
+    # logs = pipeline.run()
+    # # ✅ Enviar logs línea por línea al WebSocket
+    # for line in logs.split("\n"):
+    #     socketio.emit("pipeline_output", {"message": line})
+
 
     socketio.emit("pipeline_output", {"message": "✅ Pipeline finalizado."})
 
@@ -272,4 +294,4 @@ def get_spark_ui_url():
 if __name__ == "__main__":
     IP  = "atlas.ugr.es"
     PORT= 4050
-    socketio.run(app, host=IP, port=PORT, debug=DEBUG)
+    socketio.run(app, host=IP, port=PORT, debug=DEBUG, allow_unsafe_werkzeug=True)
