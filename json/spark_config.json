@@ -1,15 +1,33 @@
 {
     "spark": {
         "app_name": "TFG_SparkNLP",
-        "master": "local[*]",
+        "master": "yarn",
+        "deploy_mode": "cluster",
         "use_spark_nlp": true,
-        "executor_memory": "4g",
-        "driver_memory": "2g",
+        "executor_memory": "64g",
+        "driver_memory": "64g",
+        "executor_cores": 8,
+        "num_executors": 50,
         "configurations": {
             "spark.serializer": "org.apache.spark.serializer.KryoSerializer",
-            "spark.kryoserializer.buffer.max": "512m",
+            "spark.jars.packages": "com.johnsnowlabs.nlp:spark-nlp_2.12:5.1.2",
+            "spark.kryoserializer.buffer.max": "1024m",
+            "spark.kryoserializer.buffer": "1m",
             "spark.sql.execution.arrow.pyspark.enabled": "true",
-            "spark.driver.maxResultSize": "2g"
+            "spark.driver.maxResultSize": "16g",
+            "spark.sql.autoBroadcastJoinThreshold": "-1",
+            "spark.sql.shuffle.partitions": "1000",
+            "spark.network.timeout": "1200s",
+            "spark.executor.heartbeatInterval": "300s",
+            "spark.rdd.compress": "true",
+            "spark.memory.fraction": "0.8",
+            "spark.memory.storageFraction": "0.6",
+            "spark.dynamicAllocation.enabled": "true",
+            "spark.dynamicAllocation.minExecutors": "10",
+            "spark.dynamicAllocation.maxExecutors": "100",
+            "spark.executor.instances": "50",
+            "spark.yarn.executor.memoryOverhead": "8g",
+            "spark.driver.memoryOverhead": "8g"
         }
     }
 }

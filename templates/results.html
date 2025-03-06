@@ -76,28 +76,26 @@
     <title>Resultados del Pipeline</title>
     <!--  Botón para abrir Spark UI -->
     <div class="spark-ui-container">
-        <button onclick="openSparkUI()" class="spark-ui-btn">🔍 Abrir Spark UI</button>
+        <button onclick="openSparkUI()" class="spark-ui-btn">👁️ Abrir Spark UI atlas.ugr.es:8080</button>
     </div>
 
     <script>
         function openSparkUI() {
-            fetch("/spark_ui")
-            .then(response => response.json())
-            .then(data => {
-                if (data.spark_ui_url) {
-                    window.open(data.spark_ui_url, "_blank"); // Abrir en nueva pestaña
-                } else {
-                    alert("⚠️ No se pudo obtener la URL de Spark UI.");
-                }
-            })
-            .catch(error => console.error("Error al obtener la URL de Spark UI:", error));
+            window.open("http://atlas.ugr.es:8080/", "_blank"); // Abrir en nueva pestaña
         }
+
 
         // Función para mostrar la tabla cuando se haga clic en "Ver Tabla"
         function showTable() {
-            var tableDiv = document.getElementById("df_table");
+            var tableDiv = document.getElementById("df_input");
             if (tableDiv) {
                 tableDiv.style.display = "block";
+            }
+        }
+        function showTable2() {
+            var tableDiv2 = document.getElementById("df_output");
+            if (tableDiv2) {
+                tableDiv2.style.display = "block";
             }
         }
     </script>
@@ -105,10 +103,13 @@
 <body>
 
     <div class="container">
-        <h1>📊 Resultados del Pipeline de modelo {{ model_key }}</h1>
+        <h1>📊 Resultados del Pipeline  {{ model_key }}</h1>
         
         <h3>Muestra de ejecución: </h3>
         <div id="output"></div>
+
+        <button onclick="listarArchivos()">📂 Abrir Directorio de Salida 📥 </button>
+        <ul id="file-list"></ul>
 
         <a href="/" class="back-btn">🔙 Volver al Inicio</a>
     </div>
@@ -117,19 +118,17 @@
         var socket = io();
         var outputDiv = document.getElementById("output");
     
-        // 📌 Depuración para ver si WebSockets están funcionando
-        socket.on("connect", function() {
-            console.log("Conectado al servidor WebSocket");
-            console.log("Enviando evento run_pipeline...");
-    
+        // Depuración para ver si WebSockets están funcionando
+        if (!sessionStorage.getItem("pipeline_running")) {
+            sessionStorage.setItem("pipeline_running", "true");
             socket.emit("run_pipeline", {
                 input_type: "{{ input_type }}",
                 input_data: "{{ input_data }}",
-                pipeline_config: "{{ pipeline_config }}"
+                model_key:  "{{ model_key }}"
             });
-        });
+        }
     
-        // 📌 Verificar si el servidor responde
+        // Verificar si el servidor responde
         socket.on("pipeline_output", function(data) {
             console.log("📩 Respuesta del servidor:", data);
             outputDiv.innerHTML += data.message + "<br>";
@@ -139,6 +138,37 @@
         socket.on("connect_error", (err) => {
             console.error(" Error de conexión con WebSocket:", err);
         });
+
+
+        // Función para detener el pipeline 
+        function stopPipeline() {
+            console.log("🛑 Deteniendo la ejecución del pipeline...");
+            sessionStorage.removeItem("pipeline_running");
+            socket.emit("stop_pipeline");  
+        }
+        // Detectar cuando el usuario cierra la página o navega fuera
+        window.addEventListener("beforeunload", function() {
+            stopPipeline();  
+        });
+        // Interceptar clic en "Volver al Inicio" y detener el pipeline
+        document.querySelector(".back-btn").addEventListener("click", function(event) {
+            stopPipeline();
+        });
+
+        // Función para listar los archivos disponibles en el directorio de salida
+        function listarArchivos() {
+            fetch("/list_files")
+                .then(response => response.json())
+                .then(files => {
+                    let lista = document.getElementById("file-list");
+                    lista.innerHTML = ""; // Limpiar lista anterior
+                    files.forEach(file => {
+                        let li = document.createElement("li");
+                        li.innerHTML = `<a href="/download/${file}" download>${file} ⬇️</a>`;
+                        lista.appendChild(li);
+                    });
+                });
+        }
     </script>
     
 

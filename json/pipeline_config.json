@@ -6,16 +6,29 @@
                 {
                     "name": "document_assembler",
                     "params": {
-                        "inputCol": "text",
-                        "outputCol": "document"
+                        "inputCol": "TextColumn1",
+                        "outputCol": "document1"
                     }
                 },
                 {
                     "name": "marian_transformer",
                     "params": {
                         "model_name": "opus_mt_en_es",
-                        "inputCol": "document",
-                        "outputCol": "translation"
+                        "inputCol": "document1",
+                        "outputCol": "TextColumn1_transformed"
+                    }
+                },
+                {
+                    "name": "finisher",
+                    "params": {
+                        "inputCols": [
+                            "TextColumn1_transformed"
+                        ],
+                        "outputCols": [
+                            "finished_TextColumn1_transformed"
+                        ],
+                        "includeMetadata": false,
+                        "outputAsArray": false
                     }
                 }
             ]
