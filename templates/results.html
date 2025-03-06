@@ -48,8 +48,8 @@
             border-radius: 5px;
             overflow-x: auto;
             white-space: pre-wrap;
-            height: 400px; /* Más alto para ver más mensajes */
-            width: 95%; /* 📌 Más ancho, ocupa casi toda la página */
+            height: 400px; 
+            width: 95%; 
             margin: auto;
             text-align: left;
         }
@@ -108,7 +108,7 @@
         <h3>Muestra de ejecución: </h3>
         <div id="output"></div>
 
-        <button onclick="listarArchivos()">📂 Abrir Directorio de Salida 📥 </button>
+        <button onclick="listAllFiles()">📂 Abrir Directorio de Salida 📥 </button>
         <ul id="file-list"></ul>
 
         <a href="/" class="back-btn">🔙 Volver al Inicio</a>
@@ -156,19 +156,66 @@
         });
 
         // Función para listar los archivos disponibles en el directorio de salida
-        function listarArchivos() {
+        function listAllFiles() {
+            console.log("Llamando a listAllFiles()");
+
             fetch("/list_files")
                 .then(response => response.json())
                 .then(files => {
+                    console.log("Archivos recibidos:", files);
                     let lista = document.getElementById("file-list");
-                    lista.innerHTML = ""; // Limpiar lista anterior
+                    lista.innerHTML = ""; 
+
+                    if (files.length === 0) {
+                        lista.innerHTML = "<li>No hay archivos disponibles.</li>";
+                        return;
+                    }
+
                     files.forEach(file => {
                         let li = document.createElement("li");
-                        li.innerHTML = `<a href="/download/${file}" download>${file} ⬇️</a>`;
+
+                        // Enlace de descarga
+                        let link = document.createElement("a");
+                        link.href = `/download/${file.replaceAll('\\', '/')}`;
+                        link.download = file;
+                        link.innerHTML = `${file} ⬇️`;
+
+                        // Botón de eliminar
+                        let deleteBtn = document.createElement("button");
+                        deleteBtn.innerHTML = "❌";
+                        deleteBtn.style.marginLeft = "10px";
+                        deleteBtn.onclick = function () {
+                            deleteOutputFile(file);
+                        };
+
+                        li.appendChild(link);
+                        li.appendChild(deleteBtn);
                         lista.appendChild(li);
                     });
-                });
+                })
+                .catch(error => console.error("Error al obtener la lista de archivos:", error));
         }
+
+        function deleteOutputFile(filename) {
+            fetch("/delete_file", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ filename: filename })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert("Archivo eliminado correctamente.");
+                    listAllFiles(); 
+                } else {
+                    alert("Error al eliminar el archivo: " + data.message);
+                }
+            })
+            .catch(error => console.error("Error al eliminar el archivo:", error));
+        }
+
     </script>
     
 

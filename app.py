@@ -246,7 +246,7 @@ def run_pipeline(data):
     if pipeline_init_spark_msg:
         socketio.emit("pipeline_output", {"message": pipeline_init_spark_msg})
     
-    socketio.emit("pipeline_output", {"message": "🗃️Cargando datos de entrada..."})
+    socketio.emit("pipeline_output", {"message": "\n\n\n🗃️Cargando datos de entrada..."})
 
     if input_type == "file":    
         df = pipeline.load_from_local(file_path = input_data)
@@ -316,11 +316,18 @@ def stop_pipeline():
 
 @app.route('/list_files')
 def list_files():
-    """Devuelve una lista de archivos en el directorio de salida."""
-    files = [f for f in os.listdir(DATA_OUTPUT_DIR) if os.path.isfile(os.path.join(DATA_OUTPUT_DIR, f))]
+    """Lista todos los archivos dentro de subdirectorios en DATA_OUTPUT_DIR."""
+    files = []
+    for root, _, filenames in os.walk(DATA_OUTPUT_DIR):  # Recorre subdirectorios
+        for filename in filenames:
+            full_path = os.path.join(root, filename)
+            relative_path = os.path.relpath(full_path, DATA_OUTPUT_DIR)  # Ruta relativa
+            files.append(relative_path)
+
+    print("📂 Archivos detectados:", files)
     return jsonify(files)
 
-@app.route('/download/<filename>')
+@app.route(f'{DATA_OUTPUT_DIR}<filename>')
 def download_file(filename):
     """Permite la descarga de un archivo específico."""
     file_path = os.path.join(DATA_OUTPUT_DIR, filename)
@@ -332,7 +339,6 @@ def emit_file_list():
     """Emite la lista de archivos disponibles al cliente."""
     files = [f for f in os.listdir(DATA_OUTPUT_DIR) if os.path.isfile(os.path.join(DATA_OUTPUT_DIR, f))]
     socketio.emit("file_list", {"files": files})
-
 
 ###################################################################################
 ########################### ⭐EJECUCION MAIN DE APP⭐ ############################
