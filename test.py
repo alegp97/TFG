@@ -12,9 +12,9 @@ os.environ["PYSPARK_PYTHON"] = "/usr/bin/python3.9"
 os.environ["PYSPARK_DRIVER_PYTHON"] = "/usr/bin/python3.9"
 
 try:
-    # ============================
+    #============================
     # Iniciar la sesión de Spark
-    # ============================
+    #============================
     spark = SparkSession.builder \
         .appName("tfgPrueba") \
         .master("spark://atlas:7077") \

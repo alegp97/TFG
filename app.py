@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, jsonify, make_response, send_file
+from flask import Flask, render_template, request, redirect, url_for, jsonify, g, send_file
 from flask_socketio import SocketIO
 import json
 import os
@@ -15,6 +15,10 @@ DATA_OUTPUT_DIR = os.path.join(BASE_DIR, "data/output")
 MODEL_CONFIG_PATH = os.path.join(BASE_DIR, "json/pipeline_config.json")  
 SPARK_CONFIG_PATH = os.path.join(BASE_DIR, "json/spark_config.json")  
 DB_DICT_CONFIG_PATH = os.path.join(BASE_DIR, "json/db_config.json")  
+
+# Config de las variables en el entorno de PySpark 
+# os.environ["HADOOP_CONF_DIR"] = "/etc/hadoop/conf"
+# os.environ["YARN_CONF_DIR"] = "/etc/hadoop/conf"
 
 # ⚙️ Asegurar que el directorio de archivos existe
 os.makedirs(DATA_INPUT_DIR, exist_ok=True)
@@ -171,12 +175,13 @@ def delete_file():
 
     file_path = os.path.join(DATA_INPUT_DIR, filename)
 
+    print(f"�� archivo a eliminar: {filename}���️")
+
     if os.path.exists(file_path):
         os.remove(file_path)
         return jsonify({"status": "success", "message": "Archivo eliminado"})
     else:
         return jsonify({"status": "error", "message": "Archivo no encontrado"}), 404
-
 
 # 🚀 Ejecutar Pipeline con datos de SQL o Archivo
 @app.route("/run/<model_key>", methods=["POST"])
@@ -187,6 +192,11 @@ def launch_pipeline(model_key):
 
     if DEBUG:
         print(f"📢 input_type recibido: {input_type}")
+
+    if request.form.get("output_save") is not None:
+        output_save = True
+    else:
+        output_save = False
 
     # Determinar la fuente de datos
     if input_type == "sql":
@@ -204,7 +214,8 @@ def launch_pipeline(model_key):
     return render_template("results.html",
                            input_type=input_type, 
                            model_key=model_key, 
-                           input_data=input_data)
+                           input_data=input_data,
+                           output_save=output_save)
 
 
 
@@ -224,14 +235,15 @@ def run_pipeline(data):
     input_type = data.get("input_type")
     input_data = data.get("input_data")
     model_key = data.get("model_key")
-    
+    output_save = data.get("output_save")
+    output_save = (output_save.lower() == "true")
+
     model_configs = load_model_configs()
     if model_key not in model_configs:
         return jsonify({"error": "Modelo no encontrado"}), 404
     
     pipeline_config = model_configs[model_key]
     spark_config = load_spark_config()
-    
 
     # Inicializar y ejecutar el pipeline en tiempo real
     socketio.emit("pipeline_output", {"message": "🚀 Inicializando Pipeline..."}) 
@@ -265,22 +277,26 @@ def run_pipeline(data):
     # Ejecutar el pipeline
     print(" Ejecutando Pipeline...") 
     df = pipeline.run(df)
+    # Finalización del pipeline
+    socketio.emit("pipeline_output", {"message": "✅ Transformación NLP completada 👍 "})
 
     df_html = df.limit(10).toPandas().to_html()
     socketio.emit("pipeline_output", 
               {"message": "<button onclick='showTable2()' class='view-table-btn'>📋 Ver Muestra Transformada </button><div id='df_output' style='display:none;'>" + df_html + "</div>"})
 
-
-    socketio.emit("pipeline_output", {"message": "Pipeline finalizado 🚀"})
-
     # 📥 Guardar archivo si la fuente era local
-    if input_type == "file":
+    if input_type == "file" and output_save == True:
         output_filename = f"processed_{os.path.basename(input_data)}"
         output_file_path = os.path.join(DATA_OUTPUT_DIR, output_filename)
 
         socketio.emit("pipeline_output", {"message": f"💾 Guardando {output_file_path}..."})
         pipeline.save_to_local(df, output_file_path)
         socketio.emit("pipeline_output", {"message": f"✅ Guardado en {output_file_path}"})
+
+
+
+    
+    socketio.emit("pipeline_output", {"message": "⭐⭐⭐Pipeline finalizado 🚀"})
 
 
 @app.route("/spark_ui")
@@ -316,18 +332,22 @@ def stop_pipeline():
 
 @app.route('/list_files')
 def list_files():
-    """Lista todos los archivos dentro de subdirectorios en DATA_OUTPUT_DIR."""
+    """Lista todos los archivos dentro de subdirectorios en DATA_OUTPUT_DIR, ordenados por fecha."""
     files = []
-    for root, _, filenames in os.walk(DATA_OUTPUT_DIR):  # Recorre subdirectorios
+    for root, _, filenames in os.walk(DATA_OUTPUT_DIR):
         for filename in filenames:
             full_path = os.path.join(root, filename)
             relative_path = os.path.relpath(full_path, DATA_OUTPUT_DIR)  # Ruta relativa
-            files.append(relative_path)
+            files.append((relative_path, os.path.getmtime(full_path)))  # Guardamos con timestamp
 
-    print("📂 Archivos detectados:", files)
-    return jsonify(files)
+    # Ordenar por fecha de modificación (más recientes primero)
+    files_sorted = sorted(files, key=lambda x: x[1], reverse=True)
+    files_only = [f[0] for f in files_sorted] 
 
-@app.route(f'{DATA_OUTPUT_DIR}<filename>')
+    print("📂 Archivos detectados (ordenados):", files_only)
+    return jsonify(files_only)
+
+@app.route('/download/<path:filename>')
 def download_file(filename):
     """Permite la descarga de un archivo específico."""
     file_path = os.path.join(DATA_OUTPUT_DIR, filename)
@@ -339,6 +359,20 @@ def emit_file_list():
     """Emite la lista de archivos disponibles al cliente."""
     files = [f for f in os.listdir(DATA_OUTPUT_DIR) if os.path.isfile(os.path.join(DATA_OUTPUT_DIR, f))]
     socketio.emit("file_list", {"files": files})
+
+
+# 🗑️ Eliminar archivos seleccionados del directorio de salida
+@app.route('/delete_file_output', methods=['POST'])
+def delete_file_output():
+    """Elimina un archivo seleccionado dentro del directorio de salida."""
+    data = request.get_json()
+    filename = data.get("filename")
+    file_path = os.path.join(DATA_OUTPUT_DIR, filename)
+
+    if os.path.exists(file_path):
+        os.remove(file_path)
+    else:
+        return jsonify({"success": False, "message": "Archivo no encontrado."})
 
 ###################################################################################
 ########################### ⭐EJECUCION MAIN DE APP⭐ ############################

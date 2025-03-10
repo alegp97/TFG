@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+    <link rel="icon" type="image/png" href="sparknlp.png">
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -124,7 +125,8 @@
             socket.emit("run_pipeline", {
                 input_type: "{{ input_type }}",
                 input_data: "{{ input_data }}",
-                model_key:  "{{ model_key }}"
+                model_key:  "{{ model_key }}",
+                output_save: "{{ output_save }}"
             });
         }
     
@@ -157,35 +159,36 @@
 
         // Función para listar los archivos disponibles en el directorio de salida
         function listAllFiles() {
-            console.log("Llamando a listAllFiles()");
-
             fetch("/list_files")
                 .then(response => response.json())
                 .then(files => {
-                    console.log("Archivos recibidos:", files);
+                    console.log("📂 Archivos recibidos:", files);
                     let lista = document.getElementById("file-list");
-                    lista.innerHTML = ""; 
+                    lista.innerHTML = "";  // Limpiar lista anterior
 
                     if (files.length === 0) {
-                        lista.innerHTML = "<li>No hay archivos disponibles.</li>";
+                        lista.innerHTML = "<li>No hay archivos en el directorio</li>";
                         return;
                     }
 
                     files.forEach(file => {
                         let li = document.createElement("li");
 
-                        // Enlace de descarga
+                        // Convertir rutas con "\" a "/"
+                        let filePath = file.replaceAll('\\', '/');
+
+                        // Crear enlace de descarga
                         let link = document.createElement("a");
-                        link.href = `/download/${file.replaceAll('\\', '/')}`;
+                        link.href = `/download/${filePath}`;
                         link.download = file;
-                        link.innerHTML = `${file} ⬇️`;
+                        link.innerHTML = `📄 ${file}`;
 
                         // Botón de eliminar
                         let deleteBtn = document.createElement("button");
                         deleteBtn.innerHTML = "❌";
                         deleteBtn.style.marginLeft = "10px";
                         deleteBtn.onclick = function () {
-                            deleteOutputFile(file);
+                            deleteOutputFile(filePath);
                         };
 
                         li.appendChild(link);
@@ -193,27 +196,25 @@
                         lista.appendChild(li);
                     });
                 })
-                .catch(error => console.error("Error al obtener la lista de archivos:", error));
+                .catch(error => console.error("⚠️ Error al obtener la lista de archivos:", error));
         }
 
         function deleteOutputFile(filename) {
-            fetch("/delete_file", {
+            fetch("/delete_file_output", {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ filename: filename })
             })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    alert("Archivo eliminado correctamente.");
-                    listAllFiles(); 
+                    alert(`🗑️ Archivo eliminado: ${filename}`);
+                    listAllFiles();  // Actualiza la lista de archivos sin refrescar la página
                 } else {
-                    alert("Error al eliminar el archivo: " + data.message);
+                    alert("⚠️ Error al eliminar el archivo: " + data.message);
                 }
             })
-            .catch(error => console.error("Error al eliminar el archivo:", error));
+            .catch(error => console.error("⚠️ Error al eliminar el archivo:", error));
         }
 
     </script>

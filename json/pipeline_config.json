@@ -4,31 +4,18 @@
             "pipeline_name": "Marian Translation",
             "stages": [
                 {
-                    "name": "document_assembler",
+                    "name": "document_assembler1",
                     "params": {
                         "inputCol": "TextColumn1",
                         "outputCol": "document1"
                     }
                 },
                 {
-                    "name": "marian_transformer",
+                    "name": "marian_transformer1",
                     "params": {
                         "model_name": "opus_mt_en_es",
                         "inputCol": "document1",
                         "outputCol": "TextColumn1_transformed"
-                    }
-                },
-                {
-                    "name": "finisher",
-                    "params": {
-                        "inputCols": [
-                            "TextColumn1_transformed"
-                        ],
-                        "outputCols": [
-                            "finished_TextColumn1_transformed"
-                        ],
-                        "includeMetadata": false,
-                        "outputAsArray": false
                     }
                 }
             ]

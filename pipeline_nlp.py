@@ -1,5 +1,6 @@
 import os
 import json
+import traceback
 
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.functions import col
@@ -13,8 +14,6 @@ from sparknlp.annotator import MarianTransformer, NerDLModel
 
 from flask import current_app
 from flask_socketio import SocketIO
-
-
 
 
 class PipelineNLP:
@@ -37,34 +36,62 @@ class PipelineNLP:
     
     
     def init_spark_session(self):
-        """Crea la sesión de Spark con la configuración proporcionada."""
-        spark_builder = SparkSession.builder.appName(self.spark_config["spark"]["app_name"])
-
-        for key, value in self.spark_config["spark"]["configurations"].items():
-            spark_builder = spark_builder.config(key, value)
-
-        # Opción para habilitar Spark NLP si está en la configuración
-        use_spark_nlp = self.spark_config["spark"].get("use_spark_nlp", False)
+        """Inicializa la sesión de Spark NLP con una configuración completamente dinámica desde un JSON."""
+        spark_config = self.spark_config["spark"]
         socketio = current_app.extensions["socketio"]
 
-        if use_spark_nlp:
-            socketio.emit("pipeline_output", {"message": f"Usando Spark NLP por defecto..."})
-            self.spark = sparknlp.start()
-        else:
-            print("Iniciando Spark sin Spark NLP...")
+        try:
+            spark_builder = SparkSession.builder.appName(spark_config.get("app_name", "SparkNLP_App"))
+
+            # Aplicar configuraciones generales (excepto configurations)
+            if "master" in spark_config:
+                spark_builder = spark_builder.master(spark_config["master"])
+
+            for key, value in spark_config.items():
+                if key not in ["configurations", "app_name", "master"]:
+                    spark_builder = spark_builder.config(f"spark.{key}", value)
+
+            # Extraer configuraciones avanzadas de Spark
+            extra_configs = spark_config.get("configurations", {})
+
+            for key, value in extra_configs.items():
+                spark_builder = spark_builder.config(key, value)
+
+            # Crear la sesión de Spark con la configuración completa
             self.spark = spark_builder.getOrCreate()
 
-        if self.debug:
-            logs = []
-            print("⭐ Sesión de Spark inicializada\n ")
-            print(f"⚙️ Configuraciones finales de Spark\n ")
-            for key, value in self.spark.sparkContext.getConf().getAll():
-                print(f"🔹 {key} = {value}")
-                logs.append(f"🔹 {key} = {value}")
-            return "\n".join(logs)
-        else:
-            return None
+            # Iniciar Spark NLP sobre la sesión de Spark creada
+            self.spark = sparknlp.start(self.spark)
+
+            # Depuración: Mostrar la configuración final de Spark NLP si está en modo debug
+            if self.debug:
+                logs = []
+                socketio.emit("pipeline_output", {"message": "⚙️ Configuración final de Spark NLP:"})
+                for key, value in self.spark.sparkContext.getConf().getAll():
+                    log_message = f"🔹 {key} = {value}"
+                    socketio.emit("pipeline_output", {"message": log_message})
+                    logs.append(log_message)
+                return "\n".join(logs)
+            else:
+                return None
+            
+        except Exception as e:
+            # Obtener el traceback completo para más detalles
+            error_trace = traceback.format_exc()
+
+            # Enviar detalles al WebSocket para depuración en tiempo real
+            error_message = f"❌ Error durante la inicialización de Spark NLP: {str(e)}"
+            socketio.emit("pipeline_output", {"message": error_message})
+            socketio.emit("pipeline_output", {"message": f"📜 Detalles técnicos:\n{error_trace}"})
+
+            # Imprimir en consola para logs adicionales
+            print(error_message)
+            print(error_trace)
+
+            # Lanzar la excepción con más contexto
+            raise RuntimeError(f"Spark NLP Initialization Failed:\n{error_trace}")
         
+
     def stop_pipeline(self):
         """Detiene la sesión de Spark."""
         if self.spark:
@@ -261,7 +288,7 @@ class PipelineNLP:
                 socketio.emit("pipeline_output", {"message": f"📢 Agregando etapa: {name} con parámetros: {params}"})
 
                 # 📄 Document Assembler (Preprocesador de texto)
-                if name == "document_assembler":
+                if name.startswith("document_assembler"):
                     assembler = DocumentAssembler() \
                         .setInputCol(params["inputCol"]) \
                         .setOutputCol(params["outputCol"])
@@ -269,31 +296,34 @@ class PipelineNLP:
                     document_columns.append(params["outputCol"])
 
                 # 🌍 Traducción con Marian Transformer
-                elif name == "marian_transformer":
-                    model_name = params["model_name"]
-                    input_col = params["inputCol"]
-
-                    # Si el modelo ya está en memoria, reutilizarlo
-                    if model_name in cached_models:
-                        socketio.emit("pipeline_output", {"message": f"🌍 Modelo {model_name} ya cargado en memoria. Usando caché..."})
-                        transformer = cached_models[model_name]
-                    else:
-                        # 📥 Descargar y cargar el modelo si no está en caché
-                        socketio.emit("pipeline_output", {"message": f"🌍 Descargando modelo de traducción: {model_name}..."})
-                        transformer = MarianTransformer.pretrained(model_name)  # Descargar y carga
-                        cached_models[model_name] = transformer
-                        socketio.emit("pipeline_output", {"message": f"🌍 Modelo {model_name} descargado correctamente."})
-
-                    transformer.setInputCols([input_col]).setOutputCol(params["outputCol"])
-                    stages.append(transformer)
-
-                # 🔎 Named Entity Recognition (NER)
-                elif name == "ner_dl":
+                elif name.startswith("marian_transformer"):
                     model_name = params["model_name"]
                     input_col = params["inputCol"]
                     output_col = params["outputCol"]
 
-                    # i el modelo ya está en memoria, reutilizarlo
+                    # Si el modelo ya está en memoria, reutilizarlo sin descargar de nuevo
+                    if model_name not in cached_models:
+                        socketio.emit("pipeline_output", {"message": f"🌍 Descargando modelo de traducción: {model_name}..."})
+                        cached_models[model_name] = MarianTransformer.pretrained(model_name)
+                        socketio.emit("pipeline_output", {"message": f"🌍 Modelo {model_name} descargado correctamente."})
+                    else:
+                        socketio.emit("pipeline_output", {"message": f"🌍 Modelo {model_name} ya cargado en memoria. Usando caché..."})
+
+                    # Crear una nueva instancia del modelo sin descargar de nuevo
+                    transformer = MarianTransformer.pretrained(model_name) \
+                        .setInputCols([input_col]) \
+                        .setOutputCol(output_col)
+
+                    # Agregar al pipeline
+                    stages.append(transformer)
+
+                # 🔎 Named Entity Recognition (NER)
+                elif name.startswith("ner"):
+                    model_name = params["model_name"]
+                    input_col = params["inputCol"]
+                    output_col = params["outputCol"]
+
+                    # Si el modelo ya está en memoria, reutilizarlo
                     if model_name in cached_models:
                         socketio.emit("pipeline_output", {"message": f"🔍 Modelo NER {model_name} ya cargado en memoria. Usando caché..."})
                         ner_model = cached_models[model_name]
@@ -308,7 +338,7 @@ class PipelineNLP:
                     stages.append(ner_model)
 
                 # 🏁 Finisher para convertir estructuras de Spark NLP en texto plano
-                elif name == "finisher":
+                elif name.startswith("finisher"):
                     input_cols = params.get("inputCols", [])
                     output_cols = params.get("outputCols", input_cols)
                     include_metadata = params.get("includeMetadata", False)
@@ -343,17 +373,28 @@ class PipelineNLP:
             transformed_df = model.transform(df)
 
             # Eliminar columnas temporales generadas
-            socketio.emit("pipeline_output", {"message": "🧹Limpiando columnas temporales..."})
-            for col in document_columns:
-                if col in transformed_df.columns:
-                    transformed_df = transformed_df.drop(col)
-
-            # Finalización del pipeline
-            socketio.emit("pipeline_output", {"message": "✅ Transformación NLP completada 👍 "})
+            # socketio.emit("pipeline_output", {"message": "🧹Limpiando columnas temporales..."})
+            # for col in document_columns:
+            #     if col in transformed_df.columns:
+            #         transformed_df = transformed_df.drop(col)
 
         except Exception as e:
             # ❌ En caso de error, emitir mensaje al cliente y detener la ejecución del pipeline
             socketio.emit("pipeline_output", {"message": f"😱 ❌ Error durante la ejecución del pipeline: {str(e)} ❌😞"})
-            raise e
+            # Obtener el traceback completo para más detalles
+            error_trace = traceback.format_exc()
+
+            # Enviar detalles al WebSocket para depuración en tiempo real
+            error_message = f"❌ Error durante la inicialización de Spark NLP: {str(e)}"
+            socketio.emit("pipeline_output", {"message": error_message})
+            socketio.emit("pipeline_output", {"message": f"📜 Detalles técnicos:\n{error_trace}"})
+
+            # Imprimir en consola para logs adicionales
+            print(error_message)
+            print(error_trace)
+
+            # Lanzar la excepción con más contexto
+            raise RuntimeError(f"Spark NLP Initialization Failed:\n{error_trace}")
+        
 
         return transformed_df
