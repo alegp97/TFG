@@ -2,7 +2,7 @@
 <html>
 <head>
     <link rel="shortcut icon" href="sparknlp.ico">
-    <title>Configuración Spark NLP</title>
+    <title>🚀 Configuración Spark NLP</title>
     <style>
         * {
             box-sizing: border-box;
@@ -53,6 +53,18 @@
             overflow-y: auto;
             max-height: 100vh; /* Se ajusta dinámicamente */
         }
+        .delete-btn {
+            width: 20%;
+            font-size: 20px; /* Reducir el tamaño del icono */
+            padding: 2px 5px; /* Reducir el espacio dentro del botón */
+            border: none;
+            background: none;
+            color: red; 
+            cursor: pointer;
+        }
+        .delete-btn:hover {
+            background-color: lightgray; 
+        }
 
         /* El textarea se expande dinámicamente */
         textarea {
@@ -79,6 +91,7 @@
         button:hover {
             background-color: #45a049;
         }
+
 
     </style>
     
@@ -107,19 +120,93 @@
 
         <!-- Ventana de configuración JSON de spark -->
         <div class="config-panel">
+            <button onclick="fetch('/abrir_consola')">Abrir Consola dentro de este Servidor</button>
+
             <form action="/save_spark_config" method="POST">
                 <h2>⚙️ Configuración de Spark ⭐</h2>
                 <textarea name="config_json" spellcheck="false">{{ spark_config }}</textarea>
-                <button type="submit">Guardar Configuración</button>
+                <button type="submit">Guardar Configuración de Spark</button>
             </form>
+        
+
+        <button onclick="listAllFiles()">📂 Abrir Directorio de Salida 📥 </button>
+        <ul id="file-list"></ul>
         </div>
+
         <script>
             document.addEventListener("DOMContentLoaded", function () {
                 let textarea = document.querySelector("textarea[name='config_json']");
                 if (textarea) {
-                    textarea.style.height = textarea.scrollHeight + "px"; // Ajusta la altura al contenido inicial
+                    textarea.style.height = textarea.scrollHeight + "px";
                 }
             });
+
+
+            // Función para listar los archivos disponibles en el directorio de salida
+        function listAllFiles() {
+            fetch("/list_files_output")
+                .then(response => response.json())
+                .then(files => {
+                    console.log("📂 Archivos recibidos:", files);
+                    let lista = document.getElementById("file-list");
+                    lista.innerHTML = "";  // Limpiar lista anterior
+
+                    if (files.length === 0) {
+                        lista.innerHTML = "<li>No hay archivos en el directorio</li>";
+                        return;
+                    }
+
+                    files.forEach(file => {
+                        let li = document.createElement("li");
+
+                        // Convertir rutas con "\" a "/"
+                        let filePath = file.replaceAll('\\', '/');
+
+                        // Crear enlace de descarga
+                        let link = document.createElement("a");
+                        link.href = `/download/${filePath}`;
+                        link.download = file;
+                        link.innerHTML = `📄 ${file}`;
+
+                        // Botón de eliminar
+                        let deleteBtn = document.createElement("button");
+                        deleteBtn.innerHTML = "❌Borrar archivo";
+                        deleteBtn.classList.add("delete-btn");
+                        deleteBtn.onclick = function () {
+                            deleteOutputFile(filePath);
+                        };
+
+                        li.appendChild(link);
+                        li.appendChild(deleteBtn);
+                        lista.appendChild(li);
+                    });
+                })
+                .catch(error => console.error("⚠️ Error al obtener la lista de archivos:", error));
+        }
+
+        function deleteOutputFile(filename) {
+            fetch("/delete_file_output", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ filename: filename })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(`🗑️ Archivo eliminado: ${filename}`);
+                    listAllFiles();  // Actualiza la lista de archivos sin refrescar la página
+                } else {
+                    // Si hay un traceback, mostrarlo en pantalla
+                    let errorDetails = data.traceback ? `\n\nDetalles del error:\n${data.traceback}` : "";
+                    alert(`⚠️ ${data.message}${errorDetails}`);
+                }
+            })
+            .catch(error => {
+                console.error("⚠️ Error al eliminar el archivo:", error);
+                alert("❌ Error inesperado. Revisa la consola para más detalles.");
+            });
+        }
+
         </script>
         
     </div>

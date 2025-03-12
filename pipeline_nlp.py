@@ -10,7 +10,7 @@ from pyspark.ml.feature import SQLTransformer
 
 import sparknlp
 from sparknlp.base import DocumentAssembler, Finisher
-from sparknlp.annotator import MarianTransformer, NerDLModel
+from sparknlp.annotator import SentenceDetectorDLModel, Tokenizer, MarianTransformer, NerDLModel
 
 from flask import current_app
 from flask_socketio import SocketIO
@@ -230,7 +230,7 @@ class PipelineNLP:
                 format = os.path.splitext(output_path)[-1].lower().replace(".", "")
 
             if format in ["csv", "txt"]:
-                df.coalesce(1).write.option("header", "true").option("delimiter", delimiter).mode(mode).csv(output_path)
+                df.write.option("header", "true").option("delimiter", delimiter).mode(mode).csv(output_path)
             elif format == "json":
                 df.write.mode(mode).json(output_path)
             elif format == "parquet":
@@ -293,6 +293,22 @@ class PipelineNLP:
                         .setInputCol(params["inputCol"]) \
                         .setOutputCol(params["outputCol"])
                     stages.append(assembler)
+                    document_columns.append(params["outputCol"])
+
+                # 🧾 Sentence detector (Separador de oraciones)
+                elif name.startswith("sentence_detector"):
+                    sentence_detector = SentenceDetectorDLModel.pretrained("sentence_detector_dl", "xx") \
+                        .setInputCols(["document"]) \
+                        .setOutputCol(params["outputCol"])
+                    stages.append(sentence_detector)
+                    document_columns.append(params["outputCol"])
+                
+                # 🎟️ Tokenizer (Separador de palabras)
+                elif name.startswith("tokenizer"):
+                    tokenizer = Tokenizer() \
+                        .setInputCols([params["inputCol"]]) \
+                        .setOutputCol(params["outputCol"])
+                    stages.append(tokenizer)
                     document_columns.append(params["outputCol"])
 
                 # 🌍 Traducción con Marian Transformer
@@ -373,10 +389,10 @@ class PipelineNLP:
             transformed_df = model.transform(df)
 
             # Eliminar columnas temporales generadas
-            # socketio.emit("pipeline_output", {"message": "🧹Limpiando columnas temporales..."})
-            # for col in document_columns:
-            #     if col in transformed_df.columns:
-            #         transformed_df = transformed_df.drop(col)
+            socketio.emit("pipeline_output", {"message": "🧹Limpiando columnas temporales..."})
+            for col in document_columns:
+                if col in transformed_df.columns:
+                    transformed_df = transformed_df.drop(col)
 
         except Exception as e:
             # ❌ En caso de error, emitir mensaje al cliente y detener la ejecución del pipeline
@@ -385,7 +401,7 @@ class PipelineNLP:
             error_trace = traceback.format_exc()
 
             # Enviar detalles al WebSocket para depuración en tiempo real
-            error_message = f"❌ Error durante la inicialización de Spark NLP: {str(e)}"
+            error_message = f"❌{str(e)}"
             socketio.emit("pipeline_output", {"message": error_message})
             socketio.emit("pipeline_output", {"message": f"📜 Detalles técnicos:\n{error_trace}"})
 

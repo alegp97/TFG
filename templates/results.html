@@ -74,7 +74,7 @@
 
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.js"></script>
-    <title>Resultados del Pipeline</title>
+    <title>🚀 Resultados del Pipeline</title>
     <!--  Botón para abrir Spark UI -->
     <div class="spark-ui-container">
         <button onclick="openSparkUI()" class="spark-ui-btn">👁️ Abrir Spark UI atlas.ugr.es:8080</button>
@@ -126,7 +126,8 @@
                 input_type: "{{ input_type }}",
                 input_data: "{{ input_data }}",
                 model_key:  "{{ model_key }}",
-                output_save: "{{ output_save }}"
+                output_save: "{{ output_save }}",
+                num_partitions: "{{ num_partitions }}"
             });
         }
     
@@ -159,7 +160,7 @@
 
         // Función para listar los archivos disponibles en el directorio de salida
         function listAllFiles() {
-            fetch("/list_files")
+            fetch("/list_files_output")
                 .then(response => response.json())
                 .then(files => {
                     console.log("📂 Archivos recibidos:", files);

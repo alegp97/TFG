@@ -4,7 +4,7 @@ import random
 from faker import Faker
 
 # Número de filas a generar
-NUM_ROWS = 100  # Puedes modificarlo
+NUM_ROWS = 100  #  modificarlo
 
 # Inicializar Faker para generar texto
 fake = Faker()

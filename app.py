@@ -1,3 +1,5 @@
+import traceback
+import subprocess
 from flask import Flask, render_template, request, redirect, url_for, jsonify, g, send_file
 from flask_socketio import SocketIO
 import json
@@ -8,21 +10,40 @@ from pipeline_nlp import PipelineNLP
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*") 
 
-# ⚙️ Rutas a los archivos de configuración
+import os
+
+# 🔹 Lugar de ejecución
+IP  = "atlas.ugr.es"
+PORT= 4050
+NAMENODE_PORT = 9000
+
+# ⚙️ Configuración general
+USE_HDFS = True  # Cambiar a False si queremos usar el sistema local en lugar de HDFS
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))  
-DATA_INPUT_DIR = os.path.join(BASE_DIR, "data/input") 
-DATA_OUTPUT_DIR = os.path.join(BASE_DIR, "data/output")
+
+# 🔹 Definir el namenode de HDFS correctamente
+HDFS_NAMENODE = f"hdfs://atlas:{NAMENODE_PORT}"  # Ajustar esto según nuestra configuración
+
+if USE_HDFS:
+    HDFS_BASE_DIR = f"{HDFS_NAMENODE}/user/alegp97"
+    DATA_INPUT_DIR = os.path.join(HDFS_BASE_DIR, "tfg_input")
+    DATA_OUTPUT_DIR = os.path.join(HDFS_BASE_DIR, "tfg_output")
+else:
+    DATA_INPUT_DIR = os.path.join(BASE_DIR, "data/tfg_input")
+    DATA_OUTPUT_DIR = os.path.join(BASE_DIR, "data/tfg_output")
+
+# ⚙️ Rutas de archivos de configuración (mantienen la ruta local)
 MODEL_CONFIG_PATH = os.path.join(BASE_DIR, "json/pipeline_config.json")  
 SPARK_CONFIG_PATH = os.path.join(BASE_DIR, "json/spark_config.json")  
 DB_DICT_CONFIG_PATH = os.path.join(BASE_DIR, "json/db_config.json")  
 
-# Config de las variables en el entorno de PySpark 
-# os.environ["HADOOP_CONF_DIR"] = "/etc/hadoop/conf"
-# os.environ["YARN_CONF_DIR"] = "/etc/hadoop/conf"
+#  Mostrar las rutas configuradas
+print(f"📂 DATA_INPUT_DIR: {DATA_INPUT_DIR}")
+print(f"📂 DATA_OUTPUT_DIR: {DATA_OUTPUT_DIR}")
 
-# ⚙️ Asegurar que el directorio de archivos existe
-os.makedirs(DATA_INPUT_DIR, exist_ok=True)
 
+# 📌 Mostrar debugs de dentro del proyecto
 DEBUG = True
 
 """ 
@@ -43,6 +64,10 @@ def index():
 
     return render_template("index.html", spark_config=json.dumps(spark_config, indent=2))
 
+@app.route("/abrir_consola", methods=["GET"])
+def abrir_consola():
+    subprocess.Popen(["gnome-terminal"]) 
+    return "Consola abierta"
 
 # 📝 Cargar configuración de Spark
 def load_spark_config():
@@ -90,7 +115,7 @@ def configure_model(model_key):
 
     model_config = model_configs[model_key]
     db_config = load_db_config()
-    files_in_input = os.listdir(DATA_INPUT_DIR) if os.path.exists(DATA_INPUT_DIR) else []
+    files_in_input = list_files(dir=DATA_INPUT_DIR)
 
     return render_template(
         "config.html",
@@ -160,28 +185,45 @@ def upload_file():
         return redirect(request.referrer)
 
     filename = secure_filename(file.filename)
-    file.save(os.path.join(DATA_INPUT_DIR, filename))
+
+    if USE_HDFS:
+        # Guardar temporalmente el archivo en local antes de subirlo a HDFS
+        local_temp_path = os.path.join("/tmp", filename)
+        file.save(local_temp_path)
+
+        # Subir archivo a HDFS
+        hdfs_path = f"{DATA_INPUT_DIR}/{filename}"
+        process = subprocess.run(["hdfs", "dfs", "-put", "-f", local_temp_path, hdfs_path], 
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        if process.returncode != 0:
+            print(f"Error al subir archivo a HDFS: {process.stderr.decode()}")
+            return jsonify({"error": "No se pudo subir el archivo a HDFS"}), 500
+
+        # Eliminar el archivo temporal después de la carga exitosa
+        os.remove(local_temp_path)
+    
+    else:
+        # Guardar el archivo en el sistema local
+        file.save(os.path.join(DATA_INPUT_DIR, filename))
 
     return redirect(request.referrer)
 
+
 # 🗑️ Eliminar archivos seleccionados
-@app.route("/delete_file", methods=["POST"])
-def delete_file():
+@app.route("/delete_file_input", methods=["POST"])
+def delete_file_input():
+    """Elimina un archivo seleccionado dentro del directorio de salida y muestra errores en pantalla."""
     data = request.get_json()
     filename = data.get("filename")
+    return delete_file(filename=filename, dir=DATA_INPUT_DIR)
 
-    if not filename:
-        return jsonify({"status": "error", "message": "No se especificó un archivo"}), 400
 
-    file_path = os.path.join(DATA_INPUT_DIR, filename)
+# # API para listar archivos de input
+@app.route("/list_files_input", methods=["GET"])
+def list_files_input():
+    return jsonify(list_files(dir=DATA_INPUT_DIR))
 
-    print(f"�� archivo a eliminar: {filename}���️")
-
-    if os.path.exists(file_path):
-        os.remove(file_path)
-        return jsonify({"status": "success", "message": "Archivo eliminado"})
-    else:
-        return jsonify({"status": "error", "message": "Archivo no encontrado"}), 404
 
 # 🚀 Ejecutar Pipeline con datos de SQL o Archivo
 @app.route("/run/<model_key>", methods=["POST"])
@@ -189,9 +231,11 @@ def launch_pipeline(model_key):
 
     input_type = request.form.get("input_type")
     selected_file = request.form.get("selected_file")
+    num_partitions = request.form.get("num_partitions", 1)  
 
     if DEBUG:
         print(f"📢 input_type recibido: {input_type}")
+        print(f"📢 num_partitions recibido: {num_partitions}")
 
     if request.form.get("output_save") is not None:
         output_save = True
@@ -200,22 +244,39 @@ def launch_pipeline(model_key):
 
     # Determinar la fuente de datos
     if input_type == "sql":
-        input_data = load_db_config()  
+        input_data = load_db_config()
+    
     elif input_type == "file" and selected_file:
-        file_path = os.path.join(DATA_INPUT_DIR, selected_file)
-        if not os.path.exists(file_path):
-            return jsonify({"error : ARCHIVO SELECCIONADO NO ENCONTRADO"}), 404
+        # Verificar si estamos en HDFS o sistema de archivos local
+        if USE_HDFS:
+            file_path = f"{DATA_INPUT_DIR}/{selected_file}"
+
+            # Verificar si el archivo existe en HDFS
+            check_cmd = ["hdfs", "dfs", "-test", "-e", file_path]
+            process = subprocess.run(check_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if process.returncode != 0:  #
+                return jsonify({"error": "ARCHIVO SELECCIONADO NO ENCONTRADO EN HDFS"}), 404
+
+        else:
+            file_path = os.path.join(DATA_INPUT_DIR, selected_file)  # Ruta local
+
+            # Verificar si el archivo existe en el sistema de archivos local
+            if not os.path.exists(file_path):
+                return jsonify({"error": "ARCHIVO SELECCIONADO NO ENCONTRADO EN LOCAL"}), 404
+
         print(f"📢 file recibido: {file_path}")
         input_data = file_path  
+
     else:
-        return jsonify("error : ENTRADA INVALIDA, SELECCIONE UN ARCHIVO DE ENTRADA"), 404
+        return jsonify({"error": "ENTRADA INVALIDA, SELECCIONE UN ARCHIVO DE ENTRADA"}), 40
 
     # Renderizar `results.html` primero, luego ejecutar el pipeline en WebSocket
     return render_template("results.html",
                            input_type=input_type, 
                            model_key=model_key, 
                            input_data=input_data,
-                           output_save=output_save)
+                           output_save=output_save,
+                           num_partitions=num_partitions)
 
 
 
@@ -235,6 +296,7 @@ def run_pipeline(data):
     input_type = data.get("input_type")
     input_data = data.get("input_data")
     model_key = data.get("model_key")
+    num_partitions = int(data.get("num_partitions", 1))
     output_save = data.get("output_save")
     output_save = (output_save.lower() == "true")
 
@@ -280,9 +342,9 @@ def run_pipeline(data):
     # Finalización del pipeline
     socketio.emit("pipeline_output", {"message": "✅ Transformación NLP completada 👍 "})
 
-    df_html = df.limit(10).toPandas().to_html()
-    socketio.emit("pipeline_output", 
-              {"message": "<button onclick='showTable2()' class='view-table-btn'>📋 Ver Muestra Transformada </button><div id='df_output' style='display:none;'>" + df_html + "</div>"})
+    # df_html = df.limit(10).toPandas().to_html()
+    # socketio.emit("pipeline_output", 
+    #           {"message": "<button onclick='showTable2()' class='view-table-btn'>📋 Ver Muestra Transformada </button><div id='df_output' style='display:none;'>" + df_html + "</div>"})
 
     # 📥 Guardar archivo si la fuente era local
     if input_type == "file" and output_save == True:
@@ -290,13 +352,13 @@ def run_pipeline(data):
         output_file_path = os.path.join(DATA_OUTPUT_DIR, output_filename)
 
         socketio.emit("pipeline_output", {"message": f"💾 Guardando {output_file_path}..."})
+        if num_partitions:
+            df.coalesce(num_partitions)
         pipeline.save_to_local(df, output_file_path)
         socketio.emit("pipeline_output", {"message": f"✅ Guardado en {output_file_path}"})
-
-
-
     
     socketio.emit("pipeline_output", {"message": "⭐⭐⭐Pipeline finalizado 🚀"})
+
 
 
 @app.route("/spark_ui")
@@ -330,54 +392,121 @@ def stop_pipeline():
         except Exception as e:
             socketio.emit("pipeline_output", {"message": f"❌ Error al detener el pipeline: {str(e)}"})
 
-@app.route('/list_files')
-def list_files():
-    """Lista todos los archivos dentro de subdirectorios en DATA_OUTPUT_DIR, ordenados por fecha."""
-    files = []
-    for root, _, filenames in os.walk(DATA_OUTPUT_DIR):
-        for filename in filenames:
-            full_path = os.path.join(root, filename)
-            relative_path = os.path.relpath(full_path, DATA_OUTPUT_DIR)  # Ruta relativa
-            files.append((relative_path, os.path.getmtime(full_path)))  # Guardamos con timestamp
 
-    # Ordenar por fecha de modificación (más recientes primero)
-    files_sorted = sorted(files, key=lambda x: x[1], reverse=True)
-    files_only = [f[0] for f in files_sorted] 
 
-    print("📂 Archivos detectados (ordenados):", files_only)
-    return jsonify(files_only)
+
+@app.route('/list_files_output')
+def list_files_output():
+    return list_files(dir=DATA_OUTPUT_DIR)
+
+
+""" 
+############################                         ##############################
+########################## FUNCIONES GENERALES HTML  #############################
+############################                         ##############################
+"""
+
+import subprocess
+from flask import send_file, abort
 
 @app.route('/download/<path:filename>')
 def download_file(filename):
-    """Permite la descarga de un archivo específico."""
-    file_path = os.path.join(DATA_OUTPUT_DIR, filename)
-    if os.path.exists(file_path):
-        return send_file(file_path, as_attachment=True)
-    return "Archivo no encontrado", 404
+    """Permite la descarga de un archivo específico, ya sea en HDFS o en local."""
+    
+    if USE_HDFS:
+        # Ruta del archivo en HDFS
+        hdfs_file_path = f"{DATA_OUTPUT_DIR}/{filename}"
+        local_temp_path = f"/tmp/{filename}"  # Archivo temporal en local
+        
+        # Comprobar si el archivo existe en HDFS
+        check_cmd = ["hdfs", "dfs", "-test", "-e", hdfs_file_path]
+        process = subprocess.run(check_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if process.returncode != 0:
+            return jsonify("Archivo no encontrado en HDFS"), 404
+        
+        # Descargar el archivo de HDFS a local
+        get_cmd = ["hdfs", "dfs", "-get", hdfs_file_path, local_temp_path]
+        process = subprocess.run(get_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if process.returncode != 0:
+            return jsonify("Error al descargar el archivo desde HDFS"), 500
+        
+        # Enviar el archivo al usuario y eliminarlo después
+        response = send_file(local_temp_path, as_attachment=True)
+        os.remove(local_temp_path)  # Limpiar archivo temporal
+        return response
+    
+    else:
+        # Si está en local, usar la ruta de salida normal
+        file_path = os.path.join(DATA_OUTPUT_DIR, filename)
+        if os.path.exists(file_path):
+            return send_file(file_path, as_attachment=True)
+        return jsonify("Archivo no encontrado en local") , 404
 
-def emit_file_list():
-    """Emite la lista de archivos disponibles al cliente."""
-    files = [f for f in os.listdir(DATA_OUTPUT_DIR) if os.path.isfile(os.path.join(DATA_OUTPUT_DIR, f))]
-    socketio.emit("file_list", {"files": files})
 
-
-# 🗑️ Eliminar archivos seleccionados del directorio de salida
-@app.route('/delete_file_output', methods=['POST'])
+# 🗑️ Eliminar archivos seleccionados
+@app.route("/delete_file_output", methods=["POST"])
 def delete_file_output():
-    """Elimina un archivo seleccionado dentro del directorio de salida."""
+    """Elimina un archivo seleccionado dentro del directorio de salida y muestra errores en pantalla."""
     data = request.get_json()
     filename = data.get("filename")
-    file_path = os.path.join(DATA_OUTPUT_DIR, filename)
+    return delete_file(filename=filename, dir=DATA_OUTPUT_DIR)
 
-    if os.path.exists(file_path):
-        os.remove(file_path)
+
+def delete_file(filename, dir):
+    try:
+        if USE_HDFS:
+            hdfs_path = os.path.join(dir, filename)
+            process = subprocess.Popen(["hdfs", "dfs", "-rm", hdfs_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            _, stderr = process.communicate()
+            if process.returncode != 0:
+                return jsonify({"status": "error", "message": f"Error al eliminar en HDFS: {stderr.decode()}"}), 500
+            else:
+                return jsonify({"status": "success", "message": f"Archivo eliminado en HDFS: {filename}"}), 200
+        else:
+            local_path = os.path.join(dir, filename)
+            if os.path.exists(local_path):
+                os.remove(local_path)
+                return jsonify({"status": "success", "message": "Archivo eliminado"}), 200
+            else:
+                return jsonify({"status": "error", "message": "Archivo no encontrado"}), 404
+
+    except Exception as e:
+        error_trace = traceback.format_exc()  # Captura el traceback completo
+        print(error_trace)
+        return jsonify({
+            "success": False,
+            "message": "❌ Error al eliminar el archivo.",
+            "error": str(e),
+            "traceback": error_trace  # Enviamos el traceback al frontend
+        }), 500
+    
+def list_files(dir):
+    files = []
+
+    if USE_HDFS:
+        # Listar archivos en HDFS recursivamente
+        process = subprocess.Popen(["hdfs", "dfs", "-ls", "-R", dir], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = process.communicate()
+
+        if process.returncode != 0:
+            print(f"Error al listar archivos en HDFS: {stderr.decode()}")
+            return []
+
+        for line in stdout.decode().split("\n"):
+            parts = line.split()
+            if len(parts) > 7:  # Evitamos líneas sin información de archivos
+                file_path = parts[-1]  # Última parte es la ruta completa
+                file_name = os.path.basename(file_path)  # Solo el nombre del archivo
+                files.append(file_name)
     else:
-        return jsonify({"success": False, "message": "Archivo no encontrado."})
+        # Listar archivos en sistema local recursivamente
+        for root, _, filenames in os.walk(dir):
+            for filename in filenames:
+                files.append(filename)  # Solo el nombre, sin la ruta completa
 
+    return files
 ###################################################################################
 ########################### ⭐EJECUCION MAIN DE APP⭐ ############################
 ###################################################################################
 if __name__ == "__main__":
-    IP  = "atlas.ugr.es"
-    PORT= 4050
-    socketio.run(app, host=IP, port=PORT, debug=DEBUG, allow_unsafe_werkzeug=True)
+    socketio.run(app, host=IP, port=PORT, debug=False, allow_unsafe_werkzeug=True)
