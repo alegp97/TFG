@@ -1,5 +1,6 @@
 import traceback
 import subprocess
+import time
 from flask import Flask, render_template, request, redirect, url_for, jsonify, g, send_file
 from flask_socketio import SocketIO
 import json
@@ -42,6 +43,8 @@ DB_DICT_CONFIG_PATH = os.path.join(BASE_DIR, "json/db_config.json")
 print(f"📂 DATA_INPUT_DIR: {DATA_INPUT_DIR}")
 print(f"📂 DATA_OUTPUT_DIR: {DATA_OUTPUT_DIR}")
 
+os.environ["PYSPARK_PYTHON"] = "/usr/bin/python3.9" 
+os.environ["PYSPARK_DRIVER_PYTHON"] = "/usr/bin/python3.9"
 
 # 📌 Mostrar debugs de dentro del proyecto
 DEBUG = True
@@ -249,7 +252,8 @@ def launch_pipeline(model_key):
     elif input_type == "file" and selected_file:
         # Verificar si estamos en HDFS o sistema de archivos local
         if USE_HDFS:
-            file_path = f"{DATA_INPUT_DIR}/{selected_file}"
+            # Si la ruta ya está completa, no concatenar DATA_INPUT_DIR
+            file_path = selected_file if selected_file.startswith(DATA_INPUT_DIR) else f"{DATA_INPUT_DIR}/{selected_file}"
 
             # Verificar si el archivo existe en HDFS
             check_cmd = ["hdfs", "dfs", "-test", "-e", file_path]
@@ -328,24 +332,35 @@ def run_pipeline(data):
     if input_type == "sql":
         df = pipeline.load_from_sql() 
 
+
+
     socketio.emit("pipeline_output", {"message": "✅ Datos cargados y serializados correctamente."})
+    socketio.emit("pipeline_output", {"message": f"Total de particiones antes de repartition: {df.rdd.getNumPartitions()}, reparticionando..."})
+    df = df.sample(fraction=0.0001)
+    df.persist()
+    socketio.emit("pipeline_output", {"message": f"Total de particiones después de repartition: {df.rdd.getNumPartitions()}"})
     socketio.emit("pipeline_output", {"message": "Esquema del dataframe: \n" + df.schema.json()})
 
     # Enviar la tabla con WebSocket, pero solo mostrarla cuando el usuario haga clic en "Ver Tabla"
     df_html = df.limit(10).toPandas().to_html()
     socketio.emit("pipeline_output", 
-              {"message": "<button onclick='showTable()' class='view-table-btn'>📋 Ver Muestra de Entrada </button><div id='df_input' style='display:none;'>" + df_html + "</div>"})
+              {"message": "<button onclick='showTable()' "
+              "class='view-table-btn'>📋 Ver Muestra de Entrada </button><div id='df_input' style='display:none;'>" + df_html + "</div>"})
     
     # Ejecutar el pipeline
-    print(" Ejecutando Pipeline...") 
+    time_count = time.time()
+    socketio.emit("pipeline_output", {"message": "⏳ Comienzo del contador de tiempo"})
+    print(" Ejecutando Pipeline...")
     df = pipeline.run(df)
+    df.take(1) # Forzar una accion para ejecutar el pipeline
     # Finalización del pipeline
     socketio.emit("pipeline_output", {"message": "✅ Transformación NLP completada 👍 "})
 
-    # df_html = df.limit(10).toPandas().to_html()
+    # df_html = df.limit(5).toPandas().to_html()
     # socketio.emit("pipeline_output", 
-    #           {"message": "<button onclick='showTable2()' class='view-table-btn'>📋 Ver Muestra Transformada </button><div id='df_output' style='display:none;'>" + df_html + "</div>"})
-
+    #         {"message": "<button onclick='showTable2()' "
+    #         "class='view-table-btn'>📋 Ver Muestra Transformada </button><div id='df_input' style='display:none;'>" + df_html + "</div>"})
+    
     # 📥 Guardar archivo si la fuente era local
     if input_type == "file" and output_save == True:
         output_filename = f"processed_{os.path.basename(input_data)}"
@@ -353,11 +368,13 @@ def run_pipeline(data):
 
         socketio.emit("pipeline_output", {"message": f"💾 Guardando {output_file_path}..."})
         if num_partitions:
-            df.coalesce(num_partitions)
+            socketio.emit("pipeline_output", {"message": f"Reduciendo y fusionando (coalesce) las particiones a {num_partitions} "})
+            df = df.coalesce(num_partitions)
         pipeline.save_to_local(df, output_file_path)
         socketio.emit("pipeline_output", {"message": f"✅ Guardado en {output_file_path}"})
     
     socketio.emit("pipeline_output", {"message": "⭐⭐⭐Pipeline finalizado 🚀"})
+    socketio.emit("pipeline_output", {"message": f"⌛ Tiempo de ejecución final:{ time.time() - time_count} segundos "})
 
 
 
@@ -415,7 +432,7 @@ def download_file(filename):
     
     if USE_HDFS:
         # Ruta del archivo en HDFS
-        hdfs_file_path = f"{DATA_OUTPUT_DIR}/{filename}"
+        hdfs_file_path = filename if filename.startswith(DATA_OUTPUT_DIR) else os.path.join(DATA_OUTPUT_DIR, filename)
         local_temp_path = f"/tmp/{filename}"  # Archivo temporal en local
         
         # Comprobar si el archivo existe en HDFS
@@ -455,7 +472,7 @@ def delete_file_output():
 def delete_file(filename, dir):
     try:
         if USE_HDFS:
-            hdfs_path = os.path.join(dir, filename)
+            hdfs_path = filename if filename.startswith(dir) else os.path.join(dir, filename)
             process = subprocess.Popen(["hdfs", "dfs", "-rm", hdfs_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             _, stderr = process.communicate()
             if process.returncode != 0:
@@ -496,8 +513,8 @@ def list_files(dir):
             parts = line.split()
             if len(parts) > 7:  # Evitamos líneas sin información de archivos
                 file_path = parts[-1]  # Última parte es la ruta completa
-                file_name = os.path.basename(file_path)  # Solo el nombre del archivo
-                files.append(file_name)
+                # file_name = os.path.basename(file_path)  # Solo el nombre del archivo
+                files.append(file_path)
     else:
         # Listar archivos en sistema local recursivamente
         for root, _, filenames in os.walk(dir):
@@ -505,6 +522,11 @@ def list_files(dir):
                 files.append(filename)  # Solo el nombre, sin la ruta completa
 
     return files
+
+
+
+
+
 ###################################################################################
 ########################### ⭐EJECUCION MAIN DE APP⭐ ############################
 ###################################################################################
