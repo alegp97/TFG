@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <link rel="shortcut icon" href="sparknlp.ico">
     <title>🚀 Configuración Spark NLP</title>
     <style>
         * {
@@ -55,7 +54,7 @@
         }
         .delete-btn {
             width: 20%;
-            font-size: 20px; /* Reducir el tamaño del icono */
+            font-size: 15px; /* Reducir el tamaño del icono */
             padding: 2px 5px; /* Reducir el espacio dentro del botón */
             border: none;
             background: none;
@@ -120,17 +119,17 @@
 
         <!-- Ventana de configuración JSON de spark -->
         <div class="config-panel">
-            <button onclick="fetch('/abrir_consola')">Abrir Consola dentro de este Servidor</button>
-
             <form action="/save_spark_config" method="POST">
                 <h2>⚙️ Configuración de Spark ⭐</h2>
                 <textarea name="config_json" spellcheck="false">{{ spark_config }}</textarea>
                 <button type="submit">Guardar Configuración de Spark</button>
             </form>
         
-
-        <button onclick="listAllFiles()">📂 Abrir Directorio de Salida 📥 </button>
+        <button id="btn-local" onclick="listAllFiles(this.id)">🗄️ Abrir Directorio de Salida Local </button>
+        <button id="btn-general" onclick="listAllFiles(this.id)">🗂️ Abrir Directorio de Salida General </button>
         <ul id="file-list"></ul>
+        <button onclick="mergePartitions()" class="merge-btn">📦 Fusionar Particiones de la Salida (merge en HDFS)</button>
+        <br>
         </div>
 
         <script>
@@ -142,9 +141,16 @@
             });
 
 
-            // Función para listar los archivos disponibles en el directorio de salida
-        function listAllFiles() {
-            fetch("/list_files_output")
+        // Función para listar los archivos disponibles en el directorio de salida
+        function listAllFiles(buttonId) {
+            let endpoint;
+
+            if (buttonId === "btn-local") {
+                endpoint = "/list_files_local_output";
+            } else {
+                endpoint = "/list_files_output";
+            }
+            fetch(endpoint)
                 .then(response => response.json())
                 .then(files => {
                     console.log("📂 Archivos recibidos:", files);
@@ -157,29 +163,35 @@
                     }
 
                     files.forEach(file => {
-                        let li = document.createElement("li");
+                    let li = document.createElement("li");
 
-                        // Convertir rutas con "\" a "/"
-                        let filePath = file.replaceAll('\\', '/');
+                    // Normalizar ruta
+                    let filePath = file.replaceAll('\\', '/');
+                    if (filePath.startsWith("hdfs://")) {
+                        filePath = filePath.replace("hdfs://atlas:9000", "");
+                    }
+                    if (!filePath.startsWith("/")) {
+                        filePath = "/" + filePath;
+                    }
 
-                        // Crear enlace de descarga
-                        let link = document.createElement("a");
-                        link.href = `/download/${filePath}`;
-                        link.download = file;
-                        link.innerHTML = `📄 ${file}`;
+                    // Crear enlace de descarga
+                    let link = document.createElement("a");
+                    link.href = `/download${filePath}`;
+                    link.download = file.split('/').pop();  // solo el nombre
+                    link.innerHTML = `📄 ${file.split('/').pop()}`;  // mostrar bonito
 
-                        // Botón de eliminar
-                        let deleteBtn = document.createElement("button");
-                        deleteBtn.innerHTML = "❌Borrar archivo";
-                        deleteBtn.classList.add("delete-btn");
-                        deleteBtn.onclick = function () {
-                            deleteOutputFile(filePath);
-                        };
+                    // Botón de eliminar
+                    let deleteBtn = document.createElement("button");
+                    deleteBtn.innerHTML = "❌Borrar archivo";
+                    deleteBtn.classList.add("delete-btn");
+                    deleteBtn.onclick = function () {
+                        deleteOutputFile(filePath);
+                    };
 
-                        li.appendChild(link);
-                        li.appendChild(deleteBtn);
-                        lista.appendChild(li);
-                    });
+                    li.appendChild(link);
+                    li.appendChild(deleteBtn);
+                    document.getElementById("file-list").appendChild(li);
+                });
                 })
                 .catch(error => console.error("⚠️ Error al obtener la lista de archivos:", error));
         }
@@ -192,9 +204,8 @@
             })
             .then(response => response.json())
             .then(data => {
-                if (data.success) {
+                if (data.status === "success") {
                     alert(`🗑️ Archivo eliminado: ${filename}`);
-                    listAllFiles();  // Actualiza la lista de archivos sin refrescar la página
                 } else {
                     // Si hay un traceback, mostrarlo en pantalla
                     let errorDetails = data.traceback ? `\n\nDetalles del error:\n${data.traceback}` : "";
@@ -205,6 +216,25 @@
                 console.error("⚠️ Error al eliminar el archivo:", error);
                 alert("❌ Error inesperado. Revisa la consola para más detalles.");
             });
+        }
+
+        function mergePartitions() {
+            const sourcePath = prompt("Introduce la ruta HDFS o local de las particiones:");
+            const outputFilename = prompt("Introduce el nombre de salida del archivo fusionado:");
+
+            if (!sourcePath || !outputFilename) {
+                alert("Ruta y nombre de salida requeridos.");
+                return;
+            }
+
+            fetch("/merge_partitions", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ source_path: sourcePath, output_filename: outputFilename })
+            })
+            .then(response => response.json())
+            .then(data => alert(data.message || data.error))
+            .catch(error => alert("❌ Error: " + error));
         }
 
         </script>

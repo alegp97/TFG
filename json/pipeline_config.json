@@ -4,18 +4,39 @@
             "pipeline_name": "Marian Translation",
             "stages": [
                 {
-                    "name": "document_assembler1",
+                    "name": "document_assembler",
                     "params": {
                         "inputCol": "TextColumn1",
-                        "outputCol": "document1"
+                        "outputCol": "document"
                     }
                 },
                 {
-                    "name": "marian_transformer1",
+                    "name": "sentence_detector",
+                    "params": {
+                        "inputCols": [
+                            "document"
+                        ],
+                        "outputCol": "sentences"
+                    }
+                },
+                {
+                    "name": "marian_transformer",
                     "params": {
                         "model_name": "opus_mt_en_es",
-                        "inputCol": "document1",
-                        "outputCol": "TextColumn1_transformed"
+                        "inputCol": "sentences",
+                        "outputCol": "translated_text_es"
+                    }
+                },
+                {
+                    "name": "finisher",
+                    "params": {
+                        "inputCols": [
+                            "translated_text_es"
+                        ],
+                        "outputCols": [
+                            "translation_es"
+                        ],
+                        "cleanAnnotations": true
                     }
                 }
             ]

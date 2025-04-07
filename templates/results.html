@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <link rel="shortcut icon" href="sparknlp.ico">
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -77,14 +76,13 @@
     <title>🚀 Resultados del Pipeline</title>
     <!--  Botón para abrir Spark UI -->
     <div class="spark-ui-container">
-        <button onclick="openSparkUI()" class="spark-ui-btn">👁️ Abrir Spark UI atlas.ugr.es:8080</button>
+        <button onclick="openSparkUI()" class="spark-ui-btn">👁️ Abrir Spark UI atlas.ugr.es:8080 ⭐</button>
     </div>
 
     <script>
         function openSparkUI() {
-            window.open("http://atlas.ugr.es:8080/", "_blank"); // Abrir en nueva pestaña
+            window.open("http://atlas.ugr.es:8080/", "_blank");
         }
-
 
         // Función para mostrar la tabla cuando se haga clic en "Ver Tabla"
         function showTable() {
@@ -109,9 +107,14 @@
         <h3>Muestra de ejecución: </h3>
         <div id="output"></div>
 
-        <button onclick="listAllFiles()">📂 Abrir Directorio de Salida 📥 </button>
-        <ul id="file-list"></ul>
-
+        <button onclick="listAllFiles()">🗂️ Comprobar Directorio de Salida 📥</button>
+        <ul id="file-list" style="text-align: left;"></ul>
+        <br>
+        <button onclick="mergePartitions()" class="merge-btn">📦 Fusionar Particiones</button>
+        <br>
+        <br>
+        <button onclick="stopPipeline()">🛑 Detener SparkSession </button>
+        <br>
         <a href="/" class="back-btn">🔙 Volver al Inicio</a>
     </div>
 
@@ -141,6 +144,39 @@
         socket.on("connect_error", (err) => {
             console.error(" Error de conexión con WebSocket:", err);
         });
+        
+        // Escuchar el evento para mostrar el botón de reporte
+        socket.on("show_report_button", function(data) {
+            console.log("📄 Se recibió evento para mostrar el botón de reporte.");
+            let button = document.createElement("button");
+
+            button.textContent = "📋 Ver Informe Final ";
+            button.style.marginTop = "15px";
+            button.style.padding = "15px 30px"; 
+            button.style.fontSize = "18px";
+            button.style.cursor = "pointer";
+            button.style.backgroundColor = "#2ecc71"; 
+            button.style.color = "white";
+            button.style.border = "none";
+            button.style.borderRadius = "8px";
+            button.style.fontWeight = "bold";
+            button.style.display = "block"; 
+            button.style.width = "50%"; 
+            button.style.margin = "20px auto"; 
+
+            button.onmouseover = function() {
+                button.style.backgroundColor = "#27ae60"; 
+            };
+            button.onmouseout = function() {
+                button.style.backgroundColor = "#2ecc71"; 
+            };
+
+            button.onclick = function() {
+                window.open(data.redirect_url, "_blank");
+            };
+            document.querySelector(".container").appendChild(button);
+        });
+
 
 
         // Función para detener el pipeline 
@@ -208,7 +244,7 @@
             })
             .then(response => response.json())
             .then(data => {
-                if (data.success) {
+                if (data.status === "success") {
                     alert(`🗑️ Archivo eliminado: ${filename}`);
                     listAllFiles();  // Actualiza la lista de archivos sin refrescar la página
                 } else {
@@ -216,6 +252,25 @@
                 }
             })
             .catch(error => console.error("⚠️ Error al eliminar el archivo:", error));
+        }
+
+        function mergePartitions() {
+            const sourcePath = prompt("Introduce la ruta HDFS o local de las particiones:");
+            const outputFilename = prompt("Introduce el nombre de salida del archivo fusionado:");
+
+            if (!sourcePath || !outputFilename) {
+                alert("Ruta y nombre de salida requeridos.");
+                return;
+            }
+
+            fetch("/merge_partitions", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ source_path: sourcePath, output_filename: outputFilename })
+            })
+            .then(response => response.json())
+            .then(data => alert(data.message || data.error))
+            .catch(error => alert("❌ Error: " + error));
         }
 
     </script>

@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reporte de Experimentos - Spark Pipelines</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        h1, h2, h3 { color: #333; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f4f4f4; }
+        pre { background-color: #f8f8f8; padding: 10px; border: 1px solid #ccc; }
+    </style>
+</head>
+<body>
+    <h1>Reporte de Experimentos - Evaluación de Spark Pipelines</h1>
+
+    <h2>1. Configuración del Experimento</h2>
+    <p><strong>Objetivo:</strong> Evaluar la eficiencia y versatilidad de distintos pipelines en Spark con diferentes configuraciones.</p>
+    <p><strong>Casos de prueba:</strong> Variaciones en modelos, configuraciones del clúster y carga de datos.</p>
+
+    <h2>2. Descripción de los Experimentales</h2>
+    <h3>2.1. Pipelines y Modelos Evaluados</h3>
+    <ul id="modelos_evaluados">
+        <!-- Modelos cargados dinámicamente -->
+    </ul>
+
+    <h3>2.2. Configuración del Clúster</h3>
+    <pre id="spark_config"></pre>
+
+    <h2>3. Resultados y Métricas</h2>
+    <p><strong>⏱️ Tiempo Total:</strong> <span id="duracion_total">-</span> segundos</p>
+    <p><strong>🧩 Particiones:</strong> <span id="particiones">-</span></p>
+    <p><strong>🧠 Memoria por ejecutor:</strong></p>
+    <pre id="memoria_ejecutores">-</pre>
+    <p><strong>📄 Esquema de entrada (df.schema.json()):</strong></p>
+    <pre id="esquema_entrada">-</pre>
+
+    <h3>⏱️ Tiempos por etapa</h3>
+    <table id="tabla_etapas">
+        <thead>
+            <tr><th>Etapa</th><th>Duración (s)</th></tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <script>
+        // Obtener metadata desde el backend
+        fetch("/get_metadata")
+            .then(response => response.json())
+            .then(metadata => {
+                document.getElementById("duracion_total").innerText = metadata.duration;
+                document.getElementById("particiones").innerText = metadata.partitions_before + " → " + metadata.partitions_after;
+                document.getElementById("memoria_ejecutores").innerText = JSON.stringify(metadata.executors_memory, null, 2);
+                document.getElementById("esquema_entrada").innerText = JSON.stringify(JSON.parse(metadata.input_schema), null, 2);
+
+                const modelosUl = document.getElementById("modelos_evaluados");
+                metadata.models_loaded.forEach(m => {
+                    const li = document.createElement("li");
+                    li.textContent = m;
+                    modelosUl.appendChild(li);
+                });
+
+                document.getElementById("spark_config").innerText = JSON.stringify(metadata.spark_config, null, 2);
+
+                const tabla = document.getElementById("tabla_etapas").querySelector("tbody");
+                metadata.stage_timings.forEach(etapa => {
+                    const tr = document.createElement("tr");
+                    tr.innerHTML = `<td>${etapa.stage}</td><td>${etapa.duration_sec}</td>`;
+                    tabla.appendChild(tr);
+                });
+            })
+            .catch(err => {
+                console.error("❌ Error al cargar metadata:", err);
+        });
+    </script>
+</body>
+</html>

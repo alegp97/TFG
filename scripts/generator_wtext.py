@@ -2,6 +2,30 @@ import pandas as pd
 import numpy as np
 import random
 from faker import Faker
+import os
+
+# 🔹 Lugar de ejecución
+IP  = "atlas.ugr.es"
+PORT= 4050
+NAMENODE_PORT = 9000
+
+# ⚙️ Configuración general
+USE_HDFS = True  # Cambiar a False si queremos usar el sistema local en lugar de HDFS
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))  
+
+# 🔹 Definir el namenode de HDFS correctamente
+HDFS_NAMENODE = f"hdfs://atlas:{NAMENODE_PORT}"  # Ajustar esto según nuestra configuración
+
+if USE_HDFS:
+    HDFS_BASE_DIR = f"{HDFS_NAMENODE}/user/alegp97"
+    DATA_INPUT_DIR = os.path.join(HDFS_BASE_DIR, "tfg_input")
+    DATA_OUTPUT_DIR = os.path.join(HDFS_BASE_DIR, "tfg_output")
+else:
+    DATA_INPUT_DIR = os.path.join(BASE_DIR, "data/tfg_input")
+    DATA_OUTPUT_DIR = os.path.join(BASE_DIR, "data/tfg_output")
+
+
 
 # Número de filas a generar
 NUM_ROWS = 100  #  modificarlo
@@ -35,7 +59,7 @@ ruta_parquet  = "/home/alegp97/TFG/data/input/example_wtex_en.parquet"
 ruta_csv = "/home/alegp97/TFG/data/input/example_wtex_en.csv"
 
 # Guardar
-df.to_parquet(ruta_parquet, engine="pyarrow", index=False)
+# df.to_parquet(ruta_parquet, engine="pyarrow", index=False)
 df.to_csv(ruta_csv, index=False, encoding="utf-8")
 
 print(f"Datos guardados en:\n- {ruta_parquet} (Parquet)\n- {ruta_csv} (CSV)")

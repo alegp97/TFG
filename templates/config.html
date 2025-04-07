@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <link rel="shortcut icon" href="sparknlp.ico">
     <title>🚀 Configuración del Pipeline</title>
     <style>
         body {
@@ -134,7 +133,7 @@
 
         <!-- Configuración de la Base de Datos y Selección de Entrada -->
         <div class="config-panel">
-            <h2>📝 Configuración de la Base de Datos 🧮</h2>
+            <h2>🧮 Configuración de la Base de Datos </h2>
             <form action="/save_db_config" method="POST">
                 <textarea name="db_json" spellcheck="false">{{ db_config }}</textarea>
                 <button type="submit">Guardar Configuración</button>
@@ -147,7 +146,7 @@
                 <label><input type="radio" name="input_type" value="file" checked> Usar el archivo local seleccionado</label>
 
                 <h4>📂 Seleccionar un archivo local</h4>
-                <select name="selected_file" id="selected_file">
+                <select name="selected_file" id="selected_file" style="width: 80%; max-width: 600px; padding: 5px; font-size: 16px; border-radius: 5px;">
                     <option value="">-- Seleccionar un archivo local --</option>
                     {% for file in input_files %}
                         <option value="{{ file }}">{{ file }}</option>
@@ -157,19 +156,27 @@
                 <!-- Botón para eliminar el archivo seleccionado -->
                 <br>
                 <button type="button" class="delete-btn" onclick="deleteFile()">🗑️ (borrar archivo seleccionado)</button>
+                <br><br>
+                <label><input type="checkbox" name="output_save"> Guardar la salida local</label>
+                <br><br>
+                <label for="num_partitions">Número de particiones sobre el rdd:</label>
                 <br>
-                <label><input type="checkbox" name="output_save"> Guardar la salida </label>
-                <br>
-                <label for="num_partitions">Número de particiones de la salida local:</label>
-                <br>
-                <input type="range" id="num_partitions" name="num_partitions" min="1" max="100" value="1" oninput="updatePartitionValue(this.value)">
+                <input type="range" id="num_partitions" name="num_partitions" min="1" max="1000" value="50" 
+                    style="width: 90%;" oninput="updatePartitionValue(this.value)">
                 <span id="partition_value">1</span>
+                <br><br>
+                <label for="df_fraction">Porcentaje de uso(fraccion) del DataFrame de entrada (0-100%):</label>
+                <br>
+                <input type="range" id="df_fraction" name="df_fraction" min="1" max="100" value="100"
+                    style="width: 90%;" oninput="updateFractionValue(this.value)">
+                <span id="fraction_value">100%</span>
+
                 </form>
                 </br>
             </form>
 
             <!-- Botón para subir un archivo -->
-            <h4>⬆️ Subir un nuevo archivo</h4>
+            <h4>⬆️ Subir archivo al directorio local</h4>
             <form action="/upload_file" method="POST" enctype="multipart/form-data">
                 <input type="file" name="file">
                 <button type="submit" class="upload-btn">Subir Archivo</button>
@@ -190,6 +197,10 @@
         function updatePartitionValue(value) {
             document.getElementById("partition_value").textContent = value;
         }
+        function updateFractionValue(value) {
+            document.getElementById("fraction_value").textContent = value + "%";
+        }
+
 
         function deleteFile() {
             let selectedFile = document.getElementById("selected_file").value;
