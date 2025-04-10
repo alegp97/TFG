@@ -6,6 +6,7 @@ from sparknlp.annotator import SentenceDetectorDLModel, Tokenizer, MarianTransfo
 
 SPARK_NLP_JAR = "com.johnsnowlabs.nlp:spark-nlp_2.12:5.5.3"
 
+import shutil
 import os
 import sparknlp
 
@@ -15,9 +16,12 @@ os.environ["JAVA_HOME"] = "/usr/lib/jvm/java-11-openjdk-amd64"
 
 from settings import * 
 
-MODELS_DIR = os.path.join(BASE_DIR, "models_nlp_local")
+MODELS_DIR = os.path.join(BASE_DIR, "sparknlp_models")
+
+translator_path = os.path.join(MODELS_DIR, "opus_mt_en_es")
 
 try:
+    
     #============================
     # Iniciar la sesión de Spark
     #============================
@@ -31,12 +35,17 @@ try:
 
     print("\nSesión de Spark iniciada con éxito")
 
+    #===========================================
+    # Eliminar modelo anterior si ya está guardado
+    #===========================================
+    if os.path.exists(translator_path):
+        shutil.rmtree(translator_path, ignore_errors=True)
 
-    # translator = MarianTransformer.pretrained("opus_mt_en_es") \
-    # .write() \
-    # .overwrite() \
-    # .save(os.path.join(MODELS_DIR, "opus_mt_en_es"))
-
+    #=========================
+    # Cargar y guardar modelo
+    #=========================
+    translator = MarianTransformer.pretrained("opus_mt_en_es")
+    translator.write().overwrite().save(translator_path)
 
     data = [
         (1, "The Mona Lisa is a famous painting."),
@@ -60,10 +69,16 @@ try:
     tokenizer = Tokenizer() \
         .setInputCols(["sentence"]) \
         .setOutputCol("token")
+    
 
-    translator = MarianTransformer.load(os.path.join(MODELS_DIR, "opus_mnt_en_es")) \
-        .setInputCols(["sentence"]) \
-        .setOutputCol("translation")
+    translator = MarianTransformer.load(os.path.join(MODELS_DIR, "opus_mt_en_es")) \
+    .setInputCols(["sentence"]) \
+    .setOutputCol("translation")
+
+    # translator = MarianTransformer.pretrained("opus_mt_en_es")\
+    #     .setInputCols(["sentence"]) \
+    #     .setOutputCol("translation")
+
 
     pipeline = Pipeline(stages=[document_assembler, sentence_detector, tokenizer, translator])
 
@@ -71,11 +86,7 @@ try:
     result = model.transform(df)
 
     translated_df = result.select(col("id"), col("text"), col("translation.result").alias("translated_text"))
-
-
     translated_df.show()
-
-
 
     if spark is not None:
         spark.stop()

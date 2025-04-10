@@ -1,68 +1,41 @@
 from pyspark.sql import SparkSession
+import glob
 import os
 
-# 🔹 Lugar de ejecución
-IP  = "atlas.ugr.es"
-PORT= 4050
-NAMENODE_PORT = 9000
+# 1. Crear sesión de Spark
+spark = SparkSession.builder \
+    .appName("change_format") \
+    .master("spark://atlas:7077") \
+    .getOrCreate()
 
-# ⚙️ Configuración general
-USE_HDFS = True  # Cambiar a False si queremos usar el sistema local en lugar de HDFS
+# Ruta del archivo JSON de entrada
+base_path = os.path.expanduser("/home/alegp97/TFG/data/datasets/extracted")
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))  
+# Obtener todos los archivos tipo "wiki_*" en subcarpetas
+all_files = glob.glob(f"{base_path}/**/wiki_*", recursive=True)
 
-# 🔹 Definir el namenode de HDFS correctamente
-HDFS_NAMENODE = f"hdfs://atlas:{NAMENODE_PORT}"  # Ajustar esto según nuestra configuración
+# Filtrar solo archivos con contenido > 0 bytes
+valid_files = [f for f in all_files if os.path.getsize(f) > 0]
 
-if USE_HDFS:
-    HDFS_BASE_DIR = f"{HDFS_NAMENODE}/user/alegp97"
-    DATA_INPUT_DIR = os.path.join(HDFS_BASE_DIR, "tfg_input")
-    DATA_OUTPUT_DIR = os.path.join(HDFS_BASE_DIR, "tfg_output")
-else:
-    DATA_INPUT_DIR = os.path.join(BASE_DIR, "data/tfg_input")
-    DATA_OUTPUT_DIR = os.path.join(BASE_DIR, "data/tfg_output")
+print(f"✅ Archivos JSON válidos encontrados: {len(valid_files)}")
 
-# ⚙️ Rutas de archivos de configuración (mantienen la ruta local)
-MODEL_CONFIG_PATH = os.path.join(BASE_DIR, "json/pipeline_config.json")  
-SPARK_CONFIG_PATH = os.path.join(BASE_DIR, "json/spark_config.json")  
-DB_DICT_CONFIG_PATH = os.path.join(BASE_DIR, "json/db_config.json")  
+if len(valid_files) == 0:
+    raise ValueError("❌ No hay archivos JSON válidos para leer.")
 
+# Iniciar Spark
+spark = SparkSession.builder.appName("WikipediaToParquet").getOrCreate()
 
-def iniciar_spark(app_name="TransformadorDF"):
-    """Inicializa la sesión de Spark."""
-    return SparkSession.builder.appName(app_name).getOrCreate()
+# Leer como JSON
+df = spark.read.json(valid_files)
 
-def cargar_datos(spark, ruta, formato):
-    """Carga un archivo en un formato específico y devuelve un DataFrame."""
-    return spark.read.format(formato).option("header", "true").load(ruta)
+# Ruta de salida para guardar el archivo Parquet
+parquet_path =  os.path.expanduser("/home/alegp97/TFG/data/tfg_input/parquet2")
 
-def guardar_datos(df, ruta_salida, formato_salida):
-    """Guarda un DataFrame en el formato especificado."""
-    df.write.mode("overwrite").format(formato_salida).save(ruta_salida)
+df_filtered = df.filter(df.text.isNotNull() & (df.text.rlike("[a-zA-Z]{30,}")))
 
-# Inicialización de Spark
-spark = iniciar_spark()
+print(f"Guardando el DataFrame como archivo Parquet...", parquet_path)
+# Guardar el DataFrame como archivo Parquet
+df.coalesce(1).write.mode("overwrite").parquet(parquet_path)
 
-
-
-
-# Definir la ruta del archivo de entrada y el formato
-ruta_entrada = "/home/alegp97/TFG/data/tfg_input/wikipedia_train.json"  # Modificar según el caso
-formato_entrada = "json"  # Puede ser "json", "parquet", etc.
-
-
-
-# Definir la ruta de salida y el formato de salida
-ruta_salida = DATA_INPUT_DIR
-formato_salida = "csv"  # Puede ser "json", "csv", etc.
-
-# Cargar y transformar datos
-df = cargar_datos(spark, ruta_entrada, formato_entrada)
-
-print("\nDatos cargados, guardando...")
-guardar_datos(df.coalesce(1), ruta_salida, formato_salida)
-print("\nDatos guardados")
-
-# Cerrar sesión de Spark
+# Detener la sesión de Spark
 spark.stop()
-

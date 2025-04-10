@@ -59,11 +59,52 @@
                     }
                 },
                 {
+                    "name": "word_embeddings",
+                    "params": {
+                        "inputCols": [
+                            "document",
+                            "token"
+                        ],
+                        "outputCol": "word_embeddings",
+                        "pretrained_model": "glove_100d"
+                    }
+                },
+                {
                     "name": "ner_dl",
                     "params": {
                         "model_name": "ner_dl",
-                        "inputCol": "token",
+                        "inputCols": [
+                            "document",
+                            "token",
+                            "word_embeddings"
+                        ],
                         "outputCol": "ner"
+                    }
+                },
+                {
+                    "name": "ner_converter",
+                    "params": {
+                        "inputCols": [
+                            "document",
+                            "token",
+                            "ner"
+                        ],
+                        "outputCol": "ner_chunk"
+                    }
+                },
+                {
+                    "name": "finisher",
+                    "params": {
+                        "inputCols": [
+                            "ner_chunk",
+                            "word_embeddings"
+                        ],
+                        "outputCols": [
+                            "finished_ner_chunk",
+                            "finished_word_embeddings"
+                        ],
+                        "includeMetadata": true,
+                        "outputAsArray": false
                     }
                 }
             ]

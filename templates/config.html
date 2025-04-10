@@ -24,8 +24,8 @@
             background-color: white;
             box-shadow: 2px 2px 10px rgba(0,0,0,0.1);
             border-radius: 8px;
-            min-height: 900px; 
-            max-height: 130vh; 
+            min-height: 1300px; 
+            max-height: 180vh; 
             overflow-y: auto; 
         }
         .config-json {
@@ -141,23 +141,29 @@
 
             <h3>📌 Seleccionar entrada de datos 🔍</h3>
             <form id="pipeline-form" action="/run/{{ model_key }}" method="POST">
-                <label><input type="radio" name="input_type" value="sql"> Usar la consulta SQL</label>
-                <br>
-                <label><input type="radio" name="input_type" value="file" checked> Usar el archivo local seleccionado</label>
+                <!-- Tipo de entrada -->
+                <label><input type="radio" name="input_type" value="sql"> Usar la consulta SQL</label><br>
+                <label><input type="radio" name="input_type" value="file" checked> Usar archivo desde sistema (Local o HDFS)</label>
 
-                <h4>📂 Seleccionar un archivo local</h4>
-                <select name="selected_file" id="selected_file" style="width: 80%; max-width: 600px; padding: 5px; font-size: 16px; border-radius: 5px;">
-                    <option value="">-- Seleccionar un archivo local --</option>
-                    {% for file in input_files %}
-                        <option value="{{ file }}">{{ file }}</option>
-                    {% endfor %}
+                <!-- Selector de origen -->
+                <h4>📂 Origen del archivo</h4>
+                <select id="file_source" name="file_source" onchange="updateFileList()" style="width: 80%; padding: 5px; margin-bottom: 10px;">
+                    <option value="local" >🗂️ Local</option>
+                    <option value="hdfs" selected>🗄️ HDFS</option>
                 </select>
+
+                <!-- Selector de archivo -->
+                <h4>📄 Seleccionar archivo</h4>
+                <select name="selected_file" id="selected_file" style="width: 80%; max-width: 600px; padding: 5px; font-size: 16px; border-radius: 5px;">
+                    <option value="">-- Cargando archivos... --</option>
+                </select>
+                
 
                 <!-- Botón para eliminar el archivo seleccionado -->
                 <br>
                 <button type="button" class="delete-btn" onclick="deleteFile()">🗑️ (borrar archivo seleccionado)</button>
                 <br><br>
-                <label><input type="checkbox" name="output_save"> Guardar la salida local</label>
+                <label><input type="checkbox" name="output_save" checked> Guardar la salida del Pipeline</label>
                 <br><br>
                 <label for="num_partitions">Número de particiones sobre el rdd:</label>
                 <br>
@@ -176,11 +182,16 @@
             </form>
 
             <!-- Botón para subir un archivo -->
-            <h4>⬆️ Subir archivo al directorio local</h4>
+            <h4>⬆️ Subir archivo al directorio local de entrada</h4>
             <form action="/upload_file" method="POST" enctype="multipart/form-data">
                 <input type="file" name="file">
-                <button type="submit" class="upload-btn">Subir Archivo</button>
+                <select name="destination">
+                    <option value="local">Local</option>
+                    <option value="hdfs">HDFS</option>
+                </select>
+                <button type="submit">Subir</button>
             </form>
+            
         </div>
     </div>
 
@@ -200,6 +211,46 @@
         function updateFractionValue(value) {
             document.getElementById("fraction_value").textContent = value + "%";
         }
+
+        function updateFileList() {
+            const source = document.getElementById("file_source").value;
+            console.log("🔍 Solicitando archivos desde:", source);
+
+            fetch(`/list_files_by_source?source=${source}`)
+                .then(response => {
+                    console.log("Respuesta del servidor:", response);
+                    if (!response.ok) {
+                        throw new Error("Respuesta del servidor no fue OK");
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log("Archivos recibidos:", data.files);
+
+                    const select = document.getElementById("selected_file");
+                    select.innerHTML = ""; // Limpia el selector
+
+                    if (!data.files || data.files.length === 0) {
+                        const option = document.createElement("option");
+                        option.value = "";
+                        option.textContent = "(Sin archivos)";
+                        select.appendChild(option);
+                    } else {
+                        data.files.forEach(f => {
+                            const option = document.createElement("option");
+                            option.value = f; // path completo (necesario si es HDFS)
+                            option.textContent = f.split("/").pop(); // solo el nombre
+                            select.appendChild(option);
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error("❌ Error al cargar archivos:", error);
+                    const select = document.getElementById("selected_file");
+                    select.innerHTML = '<option value="">(Error al cargar archivos)</option>';
+                });
+        }
+        window.addEventListener("load", updateFileList);
 
 
         function deleteFile() {
@@ -230,6 +281,9 @@
                 alert("Hubo un error al intentar eliminar el archivo.");
             });
         }
+
+
+
 
     </script>
 

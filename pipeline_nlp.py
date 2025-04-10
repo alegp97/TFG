@@ -1,5 +1,6 @@
 import os
 import json
+import shutil
 import traceback
 import gc
 import time
@@ -20,6 +21,7 @@ from sparknlp.base import DocumentAssembler, Finisher, TokenAssembler
 from sparknlp.annotator import (
     SentenceDetector,
     SentenceDetectorDLModel,
+    WordEmbeddingsModel,
     Tokenizer,
     Normalizer,
     StopWordsCleaner,
@@ -29,7 +31,8 @@ from sparknlp.annotator import (
     ContextSpellCheckerModel,
     DocumentNormalizer,
     MarianTransformer,
-    NerDLModel
+    NerDLModel,
+    NerConverter
 )
 
 # Flask
@@ -153,22 +156,22 @@ class PipelineNLP:
             # Extraer configuraciones avanzadas de Spark
             extra_configs = spark_config.get("configurations", {})
 
+            # Aplicar configuraciones al builder
             for key, value in extra_configs.items():
                 spark_builder = spark_builder.config(key, value)
+
+            # Añadir Limpiar spark.local.dir
+            spark_tmp_path = "/tmp/spark_temp"
+            if os.path.exists(spark_tmp_path):
+                shutil.rmtree(spark_tmp_path)
+            spark_builder = spark_builder.config("spark.local.dir", spark_tmp_path)
+
 
             # Crear la sesión de Spark con la configuración completa
             self.spark = spark_builder.getOrCreate()
 
             # Iniciar Spark NLP sobre la sesión de Spark creada
             self.spark = sparknlp.start(self.spark)
-
-            # spark = SparkSession.builder \
-            #     .appName("tfgPrueba") \
-            #     .master("spark://atlas:7077") \
-            #     .config("spark.jars.packages", "com.johnsnowlabs.nlp:spark-nlp_2.12:5.5.3") \
-            #     .getOrCreate()
-            
-            # self.spark = sparknlp.start(spark)
 
             # Depuración: Mostrar la configuración final de Spark NLP si está en modo debug
             if self.debug:
@@ -197,27 +200,35 @@ class PipelineNLP:
 
             # Lanzar la excepción con más contexto
             raise RuntimeError(f"Spark NLP Initialization Failed:\n{error_trace}")
-        
+    
+
+
+    def get_spark_session(self):
+        """Devuelve la sesión de Spark actual."""
+        return self.spark
 
     def stop_pipeline(self):
         """Detiene la sesión de Spark."""
         if self.spark:
+            self.spark.catalog.clearCache()
             self.spark.stop()
-            print("Sesión de Spark detenida.")
+            self.spark = None
+            print("🧹 SparkSession limpiada y cerrada.")
 
-    def apply_nlp_pipeline(self, df):
-        """Aplica el modelo NLP en Spark"""
-        if self.debug:
-            print("⚙️ Aplicando modelo de NLP...")
 
-        pipeline_model_path = self.pipeline_config["models"].get("pipeline_path")
-        if not pipeline_model_path:
-            raise ValueError("No se especificó un modelo en la configuración.")
+    # def apply_nlp_pipeline(self, df):
+    #     """Aplica el modelo NLP en Spark"""
+    #     if self.debug:
+    #         print("⚙️ Aplicando modelo de NLP...")
 
-        pipeline_model = PipelineModel.load(pipeline_model_path)
-        transformed_df = pipeline_model.transform(df)
+    #     pipeline_model_path = self.pipeline_config["models"].get("pipeline_path")
+    #     if not pipeline_model_path:
+    #         raise ValueError("No se especificó un modelo en la configuración.")
 
-        return transformed_df
+    #     pipeline_model = PipelineModel.load(pipeline_model_path)
+    #     transformed_df = pipeline_model.transform(df)
+
+    #     return transformed_df
     
     def get_execution_metadata(self):
         """Devuelve los metadatos de ejecución, asegurando que todo sea JSON serializable."""
@@ -245,47 +256,41 @@ class PipelineNLP:
         return metadata
 
     
-    def calculate_mean_executor_metadata(self):
-        exec_mem = self.spark.sparkContext._jsc.sc().getExecutorMemoryStatus()
-        total_mem = 0
-        free_mem = 0
-        count = 0
+    # def calculate_mean_executor_metadata(self):
+    #     exec_mem = self.spark.sparkContext._jsc.sc().getExecutorMemoryStatus()
+    #     total_mem = 0
+    #     free_mem = 0
+    #     count = 0
 
-        # ✅ Usamos .entrySet() y lo iteramos con .iterator()
-        iterator = exec_mem.entrySet().iterator()
+    #     # ✅ Usamos .entrySet() y lo iteramos con .iterator()
+    #     iterator = exec_mem.entrySet().iterator()
 
-        while iterator.hasNext():
-            entry = iterator.next()
-            host = entry.getKey()
-            value = entry.getValue()
-            mem_total = value._1()
-            mem_free = value._2()
-            total_mem += mem_total
-            free_mem += mem_free
-            count += 1
+    #     while iterator.hasNext():
+    #         entry = iterator.next()
+    #         host = entry.getKey()
+    #         value = entry.getValue()
+    #         mem_total = value._1()
+    #         mem_free = value._2()
+    #         total_mem += mem_total
+    #         free_mem += mem_free
+    #         count += 1
 
-        if count > 0:
-            avg_total = round((total_mem / count) / (1024 ** 2), 2)
-            avg_free = round((free_mem / count) / (1024 ** 2), 2)
-            avg_used = round((total_mem - free_mem) / count / (1024 ** 2), 2)
+    #     if count > 0:
+    #         avg_total = round((total_mem / count) / (1024 ** 2), 2)
+    #         avg_free = round((free_mem / count) / (1024 ** 2), 2)
+    #         avg_used = round((total_mem - free_mem) / count / (1024 ** 2), 2)
 
-            self.execution_metadata["executors_memory"] = {
-                "avg_total_MB": avg_total,
-                "avg_free_MB": avg_free,
-                "avg_used_MB": avg_used,
-                "num_executors": count
-            }
-        else:
-            self.execution_metadata["executors_memory"] = {
-                "error": "No executor memory data found"
-            }
+    #         self.execution_metadata["executors_memory"] = {
+    #             "avg_total_MB": avg_total,
+    #             "avg_free_MB": avg_free,
+    #             "avg_used_MB": avg_used,
+    #             "num_executors": count
+    #         }
+    #     else:
+    #         self.execution_metadata["executors_memory"] = {
+    #             "error": "No executor memory data found"
+    #         }
 
-
-
-
-    def get_spark_session(self):
-        """Devuelve la sesión de Spark actual."""
-        return self.spark
 
     def load_from_sql(self):
         """Carga los datos desde una base de datos SQL utilizando la consulta proporcionada."""
@@ -509,6 +514,16 @@ class PipelineNLP:
                         .setOutputCol(params["outputCol"])
                     stages.append(tokenizer)
                     document_columns.append(params["outputCol"])
+                
+                # 🧠 Word Embeddings
+                elif name.startswith("word_embeddings"):
+                    embedding_model_name = params.get("pretrained_model", "glove_100d")
+                    word_embeddings = WordEmbeddingsModel.pretrained(embedding_model_name, "en") \
+                        .setInputCols(params["inputCols"]) \
+                        .setOutputCol(params["outputCol"]) \
+                        .setEnableInMemoryStorage(True)
+                    stages.append(word_embeddings)
+                    document_columns.append(params["outputCol"])
 
                 # 🧹 Normalizer
                 elif name.startswith("normalizer"):
@@ -563,6 +578,8 @@ class PipelineNLP:
                         .setAction(params.get("action", "clean")) \
                         .setPatterns(params.get("patterns", []))
                     stages.append(document_normalizer)
+                
+
 
                     """
                     ////////////////////////////////////////////////////////////////
@@ -593,9 +610,9 @@ class PipelineNLP:
                     stages.append(transformer)
 
                 # 🔎 Named Entity Recognition (NER)
-                elif name.startswith("ner"):
+                elif name == "ner_dl":
                     model_name = params["model_name"]
-                    input_col = params["inputCol"]
+                    input_cols = params.get("inputCols") or [params["inputCol"]]
                     output_col = params["outputCol"]
 
                     # Si el modelo ya está en memoria, reutilizarlo
@@ -609,9 +626,15 @@ class PipelineNLP:
                         cached_models[model_name] = ner_model
                         socketio.emit("pipeline_output", {"message": f"🔍 Modelo NER {model_name} descargado correctamente."})
 
-                    ner_model.setInputCols([input_col]).setOutputCol(output_col)
+                    ner_model.setInputCols(input_cols).setOutputCol(output_col)
                     stages.append(ner_model)
 
+                # 🔎 NER Converter
+                elif name == "ner_converter":
+                    converter = NerConverter() \
+                        .setInputCols(params["inputCols"]) \
+                        .setOutputCol(params["outputCol"])
+                    stages.append(converter)
 
                 # 🏁 Finisher
                 elif name.startswith("finisher"):
@@ -625,7 +648,6 @@ class PipelineNLP:
                         .setOutputCols(output_cols) \
                         .setIncludeMetadata(include_metadata) \
                         .setOutputAsArray(output_as_array)
-
                     stages.append(finisher)
 
                 # ⚠️ Etapa no reconocida
@@ -706,6 +728,5 @@ class PipelineNLP:
 
             # Lanzar la excepción con más contexto
             raise RuntimeError(f"Spark NLP Initialization Failed:\n{error_trace}")
-
 
         return transformed_df

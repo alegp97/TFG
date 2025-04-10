@@ -125,10 +125,10 @@
                 <button type="submit">Guardar Configuración de Spark</button>
             </form>
         
-        <button id="btn-local" onclick="listAllFiles(this.id)">🗄️ Abrir Directorio de Salida Local </button>
-        <button id="btn-general" onclick="listAllFiles(this.id)">🗂️ Abrir Directorio de Salida General </button>
-        <ul id="file-list"></ul>
+        <button id="btn-local" onclick="listAllFiles(this.id)"> 🗂️ Abrir Directorio de Salida Local </button>
+        <button id="btn-general" onclick="listAllFiles(this.id)">🗄️ Abrir Directorio de Salida General </button>
         <button onclick="mergePartitions()" class="merge-btn">📦 Fusionar Particiones de la Salida (merge en HDFS)</button>
+        <ul id="file-list"></ul>
         <br>
         </div>
 
@@ -188,8 +188,20 @@
                         deleteOutputFile(filePath);
                     };
 
+                    // Enlace para la vista previa en texto
+                    let previewLink = document.createElement("a");
+                    previewLink.innerHTML = "👀";
+                    previewLink.style.marginLeft = "10px";
+                    // Nueva ruta /preview_file_output/<filename>
+                    previewLink.href = `/preview_file_output/${filePath}`;
+                    // Para que abra en una pestaña nueva
+                    previewLink.target = "_blank";
+
+
                     li.appendChild(link);
                     li.appendChild(deleteBtn);
+                    li.appendChild(previewLink);
+                    
                     document.getElementById("file-list").appendChild(li);
                 });
                 })
