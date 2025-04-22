@@ -328,7 +328,7 @@ def run_pipeline(data):
     time_count = time.time()
     socketio.emit("pipeline_output", {"message": "⏳ Comienzo del contador de tiempo"})
     print("Ejecutando Pipeline...")
-    df = pipeline.run(df)
+    df = pipeline.run_stages(df)
     
     # Finalización del pipeline
     socketio.emit("pipeline_output", {"message": "✅ Transformación NLP completada 👍"})

@@ -16,26 +16,19 @@
 <body>
     <h1>Reporte de Experimentos - Evaluación de Spark Pipelines</h1>
 
-    <h2>1. Configuración del Experimento</h2>
-    <p><strong>Objetivo:</strong> Evaluar la eficiencia y versatilidad de distintos pipelines en Spark con diferentes configuraciones.</p>
-    <p><strong>Casos de prueba:</strong> Variaciones en modelos, configuraciones del clúster y carga de datos.</p>
-
-    <h2>2. Descripción de los Experimentales</h2>
-    <h3>2.1. Pipelines y Modelos Evaluados</h3>
+    <h3>Pipelines y Modelos Evaluados</h3>
     <ul id="modelos_evaluados">
         <!-- Modelos cargados dinámicamente -->
     </ul>
 
-    <h3>2.2. Configuración del Clúster</h3>
+    <h3>Configuración del Clúster</h3>
     <pre id="spark_config"></pre>
 
-    <h2>3. Resultados y Métricas</h2>
+    <h2>Resultados y Métricas</h2>
     <p><strong>⏱️ Tiempo Total:</strong> <span id="duracion_total">-</span> segundos</p>
     <p><strong>🧩 Particiones:</strong> <span id="particiones">-</span></p>
     <p><strong>🧠 Memoria por ejecutor:</strong></p>
     <pre id="memoria_ejecutores">-</pre>
-    <p><strong>📄 Esquema de entrada (df.schema.json()):</strong></p>
-    <pre id="esquema_entrada">-</pre>
 
     <h3>⏱️ Tiempos por etapa</h3>
     <table id="tabla_etapas">
@@ -44,6 +37,13 @@
         </thead>
         <tbody></tbody>
     </table>
+
+    <p><strong>📑 Esquema de entrada (df.schema.json()):</strong></p>
+    <pre id="esquema_entrada">-</pre>
+
+    <p><strong>📑 Esquema de salida (transformed_df.schema.json()):</strong></p>
+    <pre id="esquema_salida">-</pre>
+
 
     <script>
         // Obtener metadata desde el backend
@@ -54,6 +54,7 @@
                 document.getElementById("particiones").innerText = metadata.partitions_before + " → " + metadata.partitions_after;
                 document.getElementById("memoria_ejecutores").innerText = JSON.stringify(metadata.executors_memory, null, 2);
                 document.getElementById("esquema_entrada").innerText = JSON.stringify(JSON.parse(metadata.input_schema), null, 2);
+                document.getElementById("esquema_salida").innerText = JSON.stringify(JSON.parse(metadata.output_schema), null, 2);
 
                 const modelosUl = document.getElementById("modelos_evaluados");
                 metadata.models_loaded.forEach(m => {

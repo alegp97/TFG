@@ -1,7 +1,7 @@
 from datasets import load_dataset
 import os
 
-def descargar_dataset(nombre_dataset, ruta_destino, configuracion, formato="json"):
+def descargar_dataset(nombre_dataset, ruta_destino, configuracion, formato):
     """
     Descarga un dataset de Hugging Face y lo guarda en la ruta especificada.
 
@@ -41,6 +41,6 @@ def descargar_dataset(nombre_dataset, ruta_destino, configuracion, formato="json
 
 # USO
 nombre_dataset = "wikipedia"
-ruta_destino = "/home/alegp97/TFG/data/input/"
+ruta_destino = "/home/alegp97/TFG/data/datasets/"
 configuracion = "20220301.en"
-descargar_dataset(nombre_dataset, ruta_destino, configuracion, formato="json")
+descargar_dataset(nombre_dataset, ruta_destino, configuracion, formato="parquet")

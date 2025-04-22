@@ -448,8 +448,67 @@ class PipelineNLP:
         except Exception as e:
             socketio.emit("pipeline_output", {"message": f"❌ Error al guardar el archivo: {str(e)}"})
             raise e
+        
 
-    def run(self, df: DataFrame) -> DataFrame:
+    
+    def execute_Pipeline(self, socketio, df, document_columns, stages):
+        try:
+            # ❌ Verificar si hay etapas válidas
+            if not stages:
+                socketio.emit("pipeline_output", {"message": "❌ Error: No hay etapas válidas en el pipeline."})
+                raise ValueError("No hay etapas válidas en el pipeline.")
+
+            # 🚀 Ejecución del pipeline
+            socketio.emit("pipeline_output", {"message": "🚀 Ejecutando pipeline en Spark..."})
+            nlp_pipeline = Pipeline(stages=stages)
+
+            # 🚀 Ajuste (fit)
+            socketio.emit("pipeline_output", {"message": "🚀 Ajustando (fit)..."} )
+            fit_start = time.time()
+            model = nlp_pipeline.fit(df)
+            df.take(1)  # ⚠️ Forzar ejecución del fit
+            fit_end = time.time()
+
+            # 🚀 Transformación
+            socketio.emit("pipeline_output", {"message": "🚀 Transformando (transform)..."} )
+            transform_start = time.time()
+            transformed_df = model.transform(df)
+            transformed_df.take(1)  # ⚠️ Forzar ejecución del transform
+            transform_end = time.time()
+
+            # ⏱️ Guardar tiempos reales
+            self.execution_metadata["stage_timings"].append({
+                "stage": "fit", "duration_sec": round(fit_end - fit_start, 3)
+            })
+            self.execution_metadata["stage_timings"].append({
+                "stage": "transform", "duration_sec": round(transform_end - transform_start, 3)
+            })
+
+            # 🔢 Particiones finales
+            self.execution_metadata["partitions_after"] = transformed_df.rdd.getNumPartitions()
+
+            # # 📊 Memoria por ejecutor (media calculada desde el backend Java)
+            # self.calculate_mean_executor_metadata()
+
+            # 🧹 Eliminar columnas temporales
+            for col in document_columns:
+                if col in transformed_df.columns:
+                    transformed_df = transformed_df.drop(col)
+
+            # 🕒 Finalización y duración total
+            self.execution_metadata["end_time"] = datetime.now()
+            self.execution_metadata["duration"] = (
+                self.execution_metadata["end_time"] - self.execution_metadata["start_time"]
+            ).total_seconds()
+
+            self.execution_metadata["output_schema"] = transformed_df.schema.json()
+
+            return transformed_df
+        except Exception as e:
+            socketio.emit("pipeline_output", {"message": "❌ Error interno durante la ejecución del pipeline "})
+            raise e
+
+    def run_stages(self, df: DataFrame) -> DataFrame:
         """⚙️ Ejecuta el pipeline NLP y emite logs en tiempo real al cliente mediante WebSocket.""" 
         try:
             # 🧠 Acceder a la instancia de Flask-SocketIO para emitir logs en tiempo real
@@ -663,70 +722,29 @@ class PipelineNLP:
                 })
                 self.execution_metadata["stages_executed"].append(name)
 
-            # ❌ Verificar si hay etapas válidas
-            if not stages:
-                socketio.emit("pipeline_output", {"message": "❌ Error: No hay etapas válidas en el pipeline."})
-                raise ValueError("No hay etapas válidas en el pipeline.")
-
-            # 🚀 Ejecución del pipeline
-            socketio.emit("pipeline_output", {"message": "🚀 Ejecutando pipeline en Spark..."})
-            nlp_pipeline = Pipeline(stages=stages)
-
-            # 🚀 Ajuste (fit)
-            socketio.emit("pipeline_output", {"message": "🚀 Ajustando (fit)..."} )
-            fit_start = time.time()
-            model = nlp_pipeline.fit(df)
-            df.take(1)  # ⚠️ Forzar ejecución del fit
-            fit_end = time.time()
-
-            # 🚀 Transformación
-            socketio.emit("pipeline_output", {"message": "🚀 Transformando (transform)..."} )
-            transform_start = time.time()
-            transformed_df = model.transform(df)
-            transformed_df.take(1)  # ⚠️ Forzar ejecución del transform
-            transform_end = time.time()
-
-            # ⏱️ Guardar tiempos reales
-            self.execution_metadata["stage_timings"].append({
-                "stage": "fit", "duration_sec": round(fit_end - fit_start, 3)
-            })
-            self.execution_metadata["stage_timings"].append({
-                "stage": "transform", "duration_sec": round(transform_end - transform_start, 3)
-            })
-
-            # 🔢 Particiones finales
-            self.execution_metadata["partitions_after"] = transformed_df.rdd.getNumPartitions()
-
-            # # 📊 Memoria por ejecutor (media calculada desde el backend Java)
-            # self.calculate_mean_executor_metadata()
-
-            # 🧹 Eliminar columnas temporales
-            for col in document_columns:
-                if col in transformed_df.columns:
-                    transformed_df = transformed_df.drop(col)
-
-            # 🕒 Finalización y duración total
-            self.execution_metadata["end_time"] = datetime.now()
-            self.execution_metadata["duration"] = (
-                self.execution_metadata["end_time"] - self.execution_metadata["start_time"]
-            ).total_seconds()
-
+            
+            # 🔄 Construcción dinámica del pipeline con cada etapa
+            # Este bucle es el que recorre todas las etapas definidas en el JSON de configuración del pipeline (`self.pipeline_config["stages"]`).
+            # Cada etapa debe contener al menos una clave "name" (nombre del transformador/annotator) y opcionalmente "params" con los parámetros requeridos.
+            # Según el tipo de etapa (por ejemplo, tokenizer, normalizer, ner, etc.), se inicializa el componente correspondiente de Spark NLP,
+            # se configuran sus parámetros, se añade al pipeline, y se notifican los eventos al frontend mediante `socketio.emit`. 
+            transformed_df = self.execute_Pipeline(socketio, df, document_columns, stages)
+            
         except Exception as e:
             # ❌ En caso de error, emitir mensaje al cliente y detener la ejecución del pipeline
             socketio.emit("pipeline_output", {"message": f"😱 ❌ Error durante la ejecución del pipeline: {str(e)} ❌😞"})
             # Obtener el traceback completo para más detalles
             error_trace = traceback.format_exc()
-
             # Enviar detalles al WebSocket para depuración en tiempo real
             error_message = f"❌{str(e)}"
             socketio.emit("pipeline_output", {"message": error_message})
             socketio.emit("pipeline_output", {"message": f"📜 Detalles de traza:\n{error_trace}"})
-
-            # Imprimir en consola para logs adicionales
-            print(error_message)
+            print(error_message) # Imprimir en consola para logs adicionales
             print(error_trace)
-
             # Lanzar la excepción con más contexto
             raise RuntimeError(f"Spark NLP Initialization Failed:\n{error_trace}")
 
         return transformed_df
+
+
+

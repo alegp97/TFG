@@ -6,7 +6,7 @@
                 {
                     "name": "document_assembler",
                     "params": {
-                        "inputCol": "TextColumn1",
+                        "inputCol": "text",
                         "outputCol": "document"
                     }
                 },

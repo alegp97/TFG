@@ -55,8 +55,8 @@ print(df.info())
 print(df.head())
 
 # Ruta donde guardar el archivo
-ruta_parquet  = "/home/alegp97/TFG/data/input/example_wtex_en.parquet"
-ruta_csv = "/home/alegp97/TFG/data/input/example_wtex_en.csv"
+ruta_parquet  = "/home/alegp97/TFG/data/tfg_input/example_wtex_en.parquet"
+ruta_csv = "/home/alegp97/TFG/data/tfg_input/example_wtex_en.csv"
 
 # Guardar
 # df.to_parquet(ruta_parquet, engine="pyarrow", index=False)
