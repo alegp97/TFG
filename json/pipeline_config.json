@@ -1,12 +1,12 @@
 {
     "models": {
-        "marian_translation": {
+        "marian_translation_en_fr": {
             "pipeline_name": "Marian Translation",
             "stages": [
                 {
                     "name": "document_assembler",
                     "params": {
-                        "inputCol": "text",
+                        "inputCol": "TextColumn1",
                         "outputCol": "document"
                     }
                 },
@@ -22,7 +22,48 @@
                 {
                     "name": "marian_transformer",
                     "params": {
-                        "model_name": "opus_mt_en_es",
+                        "model_name": "opus_mt_en_fr_xx_3.1",
+                        "inputCol": "sentences",
+                        "outputCol": "translated_text_fr"
+                    }
+                },
+                {
+                    "name": "finisher",
+                    "params": {
+                        "inputCols": [
+                            "translated_text_es"
+                        ],
+                        "outputCols": [
+                            "translation_fr"
+                        ],
+                        "cleanAnnotations": true
+                    }
+                }
+            ]
+        },
+        "marian_translation_en_es": {
+            "pipeline_name": "Marian Translation",
+            "stages": [
+                {
+                    "name": "document_assembler",
+                    "params": {
+                        "inputCol": "TextColumn1",
+                        "outputCol": "document"
+                    }
+                },
+                {
+                    "name": "sentence_detector",
+                    "params": {
+                        "inputCols": [
+                            "document"
+                        ],
+                        "outputCol": "sentences"
+                    }
+                },
+                {
+                    "name": "marian_transformer",
+                    "params": {
+                        "model_name": "marian_finetuned_kde4_english_spanish_en",
                         "inputCol": "sentences",
                         "outputCol": "translated_text_es"
                     }
@@ -105,6 +146,313 @@
                         ],
                         "includeMetadata": true,
                         "outputAsArray": false
+                    }
+                }
+            ]
+        },
+        "bert_10dimensions_identity": {
+            "pipeline_name": "10Dimensions Identity Classification",
+            "stages": [
+                {
+                    "name": "document_assembler",
+                    "params": {
+                        "inputCol": "text",
+                        "outputCol": "document"
+                    }
+                },
+                {
+                    "name": "tokenizer",
+                    "params": {
+                        "inputCols": [
+                            "document"
+                        ],
+                        "outputCol": "token"
+                    }
+                },
+                {
+                    "name": "bert_for_sequence_classification",
+                    "params": {
+                        "model_name": "10dimensions_identity",
+                        "lang": "en",
+                        "inputCols": [
+                            "document",
+                            "token"
+                        ],
+                        "outputCol": "class"
+                    }
+                }
+            ]
+        },
+        "sentiment_use": {
+            "pipeline_name": "Sentiment Analysis with USE DL",
+            "stages": [
+                {
+                    "name": "document_assembler",
+                    "params": {
+                        "inputCol": "TextColumn1",
+                        "outputCol": "document"
+                    }
+                },
+                {
+                    "name": "universal_sentence_encoder",
+                    "params": {
+                        "model_name": "tfhub_use",
+                        "lang": "en",
+                        "inputCols": [
+                            "document"
+                        ],
+                        "outputCol": "sentence_embeddings"
+                    }
+                },
+                {
+                    "name": "sentiment_dl_model",
+                    "params": {
+                        "model_name": "sentimentdl_use_imdb",
+                        "lang": "en",
+                        "inputCols": [
+                            "sentence_embeddings"
+                        ],
+                        "outputCol": "sentiment"
+                    }
+                }
+            ]
+        },
+        "bert_nerdl": {
+            "pipeline_name": "NER with BERT Embeddings",
+            "stages": [
+                {
+                    "name": "document_assembler",
+                    "params": {
+                        "inputCol": "TextColumn1",
+                        "outputCol": "document"
+                    }
+                },
+                {
+                    "name": "sentence_detector_dl",
+                    "params": {
+                        "model_name": "sentence_detector_dl",
+                        "lang": "en",
+                        "inputCols": [
+                            "document"
+                        ],
+                        "outputCol": "sentence"
+                    }
+                },
+                {
+                    "name": "tokenizer",
+                    "params": {
+                        "inputCols": [
+                            "sentence"
+                        ],
+                        "outputCol": "token"
+                    }
+                },
+                {
+                    "name": "bert_embeddings",
+                    "params": {
+                        "model_name": "bert_embeddings_base_cased",
+                        "lang": "en",
+                        "inputCols": [
+                            "document",
+                            "token"
+                        ],
+                        "outputCol": "word_embeddings",
+                        "caseSensitive": false,
+                        "storageRef": "bert_base_cased"
+                    }
+                },
+                {
+                    "name": "ner_dl",
+                    "params": {
+                        "model_name": "ner_dl_bert",
+                        "lang": "en",
+                        "inputCols": [
+                            "document",
+                            "token",
+                            "word_embeddings"
+                        ],
+                        "outputCol": "ner"
+                    }
+                },
+                {
+                    "name": "ner_converter",
+                    "params": {
+                        "inputCols": [
+                            "document",
+                            "token",
+                            "ner"
+                        ],
+                        "outputCol": "ner_chunk"
+                    }
+                }
+            ]
+        },
+        "bert_nerdl_roberta": {
+            "pipeline_name": "NER with BERT and RoBERTa on Chunks",
+            "stages": [
+                {
+                    "name": "document_assembler",
+                    "params": {
+                        "inputCol": "content",
+                        "outputCol": "document"
+                    }
+                },
+                {
+                    "name": "sentence_detector_dl",
+                    "params": {
+                        "model_name": "sentence_detector_dl",
+                        "lang": "en",
+                        "inputCols": [
+                            "document"
+                        ],
+                        "outputCol": "sentence"
+                    }
+                },
+                {
+                    "name": "tokenizer",
+                    "params": {
+                        "inputCols": [
+                            "sentence"
+                        ],
+                        "outputCol": "token"
+                    }
+                },
+                {
+                    "name": "bert_embeddings",
+                    "params": {
+                        "model_name": "bert_embeddings_base_cased",
+                        "lang": "en",
+                        "inputCols": [
+                            "document",
+                            "token"
+                        ],
+                        "outputCol": "word_embeddings",
+                        "caseSensitive": true,
+                        "storageRef": "bert_base_cased"
+                    }
+                },
+                {
+                    "name": "ner_dl",
+                    "params": {
+                        "model_name": "ner_dl_bert",
+                        "lang": "en",
+                        "inputCols": [
+                            "document",
+                            "token",
+                            "word_embeddings"
+                        ],
+                        "outputCol": "ner"
+                    }
+                },
+                {
+                    "name": "ner_converter",
+                    "params": {
+                        "inputCols": [
+                            "document",
+                            "token",
+                            "ner"
+                        ],
+                        "outputCol": "ner_chunk"
+                    }
+                },
+                {
+                    "name": "chunk2doc",
+                    "params": {
+                        "inputCols": [
+                            "ner_chunk"
+                        ],
+                        "outputCol": "chunk_doc"
+                    }
+                },
+                {
+                    "name": "tokenizer_chunk",
+                    "params": {
+                        "inputCols": [
+                            "chunk_doc"
+                        ],
+                        "outputCol": "chunk_token"
+                    }
+                },
+                {
+                    "name": "roberta_ner_roberta_large_ner_english_en_3.4.2",
+                    "params": {
+                        "inputCols": [
+                            "chunk_doc",
+                            "chunk_token"
+                        ],
+                        "outputCol": "roberta_lbl"
+                    }
+                },
+                {
+                    "name": "finisher",
+                    "params": {
+                        "inputCols": [
+                            "ner_chunk",
+                            "roberta_lbl"
+                        ],
+                        "outputCols": [
+                            "finished_ner_chunk",
+                            "finished_roberta_lbl"
+                        ],
+                        "includeMetadata": false,
+                        "outputAsArray": false
+                    }
+                }
+            ]
+        },
+        "gpt2": {
+            "pipeline_name": "GPT-2 Text Generation",
+            "stages": [
+                {
+                    "name": "document_assembler",
+                    "params": {
+                        "inputCol": "text",
+                        "outputCol": "document"
+                    }
+                },
+                {
+                    "name": "gpt2_transformer",
+                    "params": {
+                        "model_name": "gpt2",
+                        "lang": "en",
+                        "engine": "tensorflow",
+                        "inputCols": [
+                            "document"
+                        ],
+                        "outputCol": "generated_text",
+                        "maxOutputLength": 50,
+                        "minOutputLength": 5,
+                        "doSample": true,
+                        "topK": 50,
+                        "temperature": 0.7
+                    }
+                }
+            ]
+        },
+        "llama2": {
+            "pipeline_name": "LLaMA 2 Text Generation",
+            "stages": [
+                {
+                    "name": "document_assembler",
+                    "params": {
+                        "inputCol": "text",
+                        "outputCol": "documents"
+                    }
+                },
+                {
+                    "name": "llama2_transformer",
+                    "params": {
+                        "model_name": "llama_2_7b_chat_hf_int4",
+                        "lang": "en",
+                        "inputCols": [
+                            "documents"
+                        ],
+                        "outputCol": "generation",
+                        "maxOutputLength": 50,
+                        "minOutputLength": 5,
+                        "doSample": true,
+                        "topK": 50,
+                        "temperature": 0.7
                     }
                 }
             ]

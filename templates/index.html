@@ -91,6 +91,22 @@
             background-color: #45a049;
         }
 
+        .save-spark-btn {
+            background-color: #3498db;  
+            color: #fff;         
+        }
+
+        .save-spark-btn:hover {
+            background-color: #2c80bf;
+        }
+
+        .item-desc{
+            display: block;     
+            margin-left: 4rem;    
+            color: #7d8a9e;       
+            font-size: 0.9em;  
+            line-height: 1.4;
+        }
 
     </style>
     
@@ -101,19 +117,61 @@
 
         <!-- Contenido principal -->
         <div class="main-content">
-            <h1>Seleccionar un Modelo de Spark NLP 🚩</h1>
+            <h1>Crear un Pipeline de Spark NLP 🚩</h1>
                 <br> </br>
             <h3>
-                <a href="https://sparknlp.org/">🌟 Agradecimientos a la comunidad Spark NLP -> Ir https://sparknlp.org/ 🌍</a>
+                <a href="https://sparknlp.org/">🌟 Correspondencia a la comunidad Spark NLP -> Ir https://sparknlp.org/ 🌍</a>
             </h3>
                 <br> </br>
             <ul>
-                <li><a href="/configure/custom"> CUSTOM (personalizado) </a></li>
-                <li><a href="/configure/marian_translation"> Marian Translation </a></li>
-                <li><a href="/configure/ner"> Named Entity Recognition (NER) </a></li>
+                <li>
+                    <a href="/configure/custom"> 🔄 CUSTOM (personalizado) </a>
+                    <span class="item-desc">Tu propio pipeline definido a medida con diversas etapas y modelos de los disponibles.</span>
+                  </li>
+                
+                  <li>
+                    <a href="/configure/bert_nerdl"> 🧬 Named Entity Recognition (NER) with BERT Embeddings</a>
+                    <span class="item-desc">Detecta entidades en texto usando BERT y un modelo NerDL.</span>
+                  </li>
+                
+                  <li>
+                    <a href="/configure/bert_nerdl_roberta"> 🧬 NER with BERT + RoBERTa Token Classification</a>
+                    <span class="item-desc">Combina BERT para entidades y RoBERTa para afinado de etiquetas.</span>
+                  </li>
+                
+                  <li>
+                    <a href="/configure/marian_translation_en_es"> 🌐 Marian Translation EN ➜ ES</a>
+                    <span class="item-desc">Traduce texto de inglés a español con MarianMT.</span>
+                  </li>
+                
+                  <li>
+                    <a href="/configure/marian_translation_en_fr"> 🌐 Marian Translation EN ➜ FR</a>
+                    <span class="item-desc">Traduce texto de inglés a francés con MarianMT.</span>
+                  </li>
+                
+                  <li>
+                    <a href="/configure/bert_10dimensions_identity"> 📚 BERT 10 Dimensions Identity Classification</a>
+                    <span class="item-desc">Clasifica frases en 10 dimensiones de identidad personal.</span>
+                  </li>
+                
+                  <li>
+                    <a href="/configure/sentiment_use"> 🌡️ Sentiment Analysis - USE + DL</a>
+                    <span class="item-desc">Evalúa sentimiento mediante Universal Sentence Encoder y red DL.</span>
+                  </li>
+                
+                  <li>
+                    <a href="/configure/gpt2"> 🤖 GPT-2 - Generación de texto creativa</a>
+                    <span class="item-desc">Genera continuaciones de texto estilo libre con GPT-2.</span>
+                  </li>
+                
+                  <li>
+                    <a href="/configure/llama2"> 🦙 LLaMA 2 - Generador de texto autoregresivo</a>
+                    <span class="item-desc">Produce texto coherente y largo con LLaMA 2.</span>
+                  </li>
             </ul>
-        </div>
 
+
+        </div>
 
 
 
@@ -122,7 +180,7 @@
             <form action="/save_spark_config" method="POST">
                 <h2>⚙️ Configuración de Spark ⭐</h2>
                 <textarea name="config_json" spellcheck="false">{{ spark_config }}</textarea>
-                <button type="submit">Guardar Configuración de Spark</button>
+                <button type="submit" class="save-spark-btn">Guardar Configuración de Spark</button>
             </form>
         
         <button id="btn-local" onclick="listAllFiles(this.id)"> 🗂️ Abrir Directorio de Salida Local </button>

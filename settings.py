@@ -17,6 +17,10 @@ HDFS_NAMENODE = f"hdfs://atlas:{NAMENODE_PORT}"  # Ajustar esto según nuestra c
 
 SPARK_UI_URL = "http://atlas.ugr.es:8080"
 
+# 📂 Directorio local para modelos NLP
+MODELS_DIR = os.path.join(BASE_DIR, "models_nlp_local")  
+
+# 📂 Rutas de datos (locales o HDFS)
 if USE_HDFS:
     HDFS_BASE_DIR = f"{HDFS_NAMENODE}/user/alegp97"
     DATA_INPUT_DIR = os.path.join(HDFS_BASE_DIR, "tfg_input")
@@ -39,6 +43,3 @@ os.environ["JAVA_HOME"] = "/usr/lib/jvm/java-11-openjdk-amd64"
 # ⚙️ Master configuration
 SPARK_MASTER = "spark://atlas:7077"
 os.environ["PYSPARK_SUBMIT_ARGS"] = f"--master {SPARK_MASTER} pyspark-shell"
-
-# 😌 Por practicidad y eficiencia, guardar la salida local siempre en parquet
-SAVE_ALWAYS_AS_PARQUET = False

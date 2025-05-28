@@ -159,26 +159,34 @@
                 </select>
                 
 
-                <!-- Botón para eliminar el archivo seleccionado -->
                 <br>
                 <button type="button" class="delete-btn" onclick="deleteFile()">🗑️ (borrar archivo seleccionado)</button>
                 <br><br>
-                <label><input type="checkbox" name="output_save" checked> Guardar la salida del Pipeline</label>
+
+                <br>
+                <label><input type="checkbox" id="output_save" name="output_save" checked> Guardar la salida del Pipeline</label>
                 <br><br>
+
+    
                 <label for="num_partitions">Número de particiones sobre el rdd:</label>
                 <br>
-                <input type="range" id="num_partitions" name="num_partitions" min="1" max="1000" value="50" 
+                <input type="range" id="num_partitions" name="num_partitions" min="1" max="1000" value="200" 
                     style="width: 90%;" oninput="updatePartitionValue(this.value)">
-                <span id="partition_value">1</span>
+                <span id="partition_value">200</span>
                 <br><br>
+
                 <label for="df_fraction">Porcentaje de uso(fraccion) del DataFrame de entrada (0-100%):</label>
                 <br>
-                <input type="range" id="df_fraction" name="df_fraction" min="1" max="100" value="100"
+                <input type="range" id="df_fraction" name="df_fraction" min="1" max="100" value="50"
                     style="width: 90%;" oninput="updateFractionValue(this.value)">
-                <span id="fraction_value">100%</span>
-
-                </form>
-                </br>
+                <span id="fraction_value">50%</span>
+                <br><br>
+                
+                <br>
+                <label><input type="checkbox" id="save_parquet_only" name="save_parquet_only"> Serializar y guardar la salida en formato parquet</label>
+                <h5>(por defecto guarda en el mismo formato que el de entrada)</h5>
+                <br><br>
+                
             </form>
 
             <!-- Botón para subir un archivo -->

@@ -205,15 +205,9 @@ def launch_pipeline(model_key):
     input_type = request.form.get("input_type")
     selected_file = request.form.get("selected_file")
     num_partitions = request.form.get("num_partitions", 1)  
-
-    if DEBUG:
-        print(f"📢 input_type recibido: {input_type}")
-        print(f"📢 num_partitions recibido: {num_partitions}")
-
-    if request.form.get("output_save") is not None:
-        output_save = True
-    else:
-        output_save = False
+    df_fraction = request.form.get("df_fraction")
+    output_save = request.form.get("output_save")
+    save_parquet_only = request.form.get("save_parquet_only")
 
     # Determinar la fuente de datos
     if input_type == "sql":
@@ -250,7 +244,9 @@ def launch_pipeline(model_key):
                            input_type=input_type, 
                            model_key=model_key, 
                            input_data=input_data,
+                           df_fraction=df_fraction,
                            output_save=output_save,
+                           save_parquet_only=save_parquet_only,
                            num_partitions=num_partitions)
 
 
@@ -276,8 +272,16 @@ def run_pipeline(data):
     model_key = data.get("model_key")
     num_partitions = int(data.get("num_partitions", 1))
     df_fraction = float(data.get("df_fraction", 100)) / 100.0
-    output_save = data.get("output_save")
-    output_save = (output_save.lower() == "true")
+    output_save = data.get("output_save") == "on"
+    save_parquet_only = data.get("save_parquet_only") == "on"
+
+    print(f"input_type: {input_type}")
+    print(f"input_data: {input_data}")
+    print(f"model_key: {model_key}")
+    print(f"num_partitions: {num_partitions}")
+    print(f"df_fraction: {df_fraction}")
+    print(f"output_save: {output_save}")
+    print(f"save_parquet_only: {save_parquet_only}")
 
     model_configs = load_model_configs()
     if model_key not in model_configs:
@@ -309,13 +313,17 @@ def run_pipeline(data):
         df = pipeline.load_from_sql() 
 
     socketio.emit("pipeline_output", {"message": "✅ Datos cargados y serializados correctamente."})
-    if df_fraction < 1.0:
-        socketio.emit("pipeline_output", {"message": f"Fraccionando el dataset al {df_fraction}"})
-        df = df.sample(fraction=df_fraction)
+    
+    socketio.emit("pipeline_output", {"message": f"Fraccionando el dataset al {df_fraction}"})
+    df = df.sample(fraction=df_fraction)
+
     if num_partitions:
         socketio.emit("pipeline_output", {"message": f"Total de particiones del rdd antes de repartition: {df.rdd.getNumPartitions()}, particionando a {num_partitions}"})
         df = df.repartition(num_partitions)
+
+    # Persistir el dataframe en memoria
     df = df.persist()
+
     socketio.emit("pipeline_output", {"message": "Esquema del dataframe: \n" + df.schema.json()})
 
     # Enviar la tabla con WebSocket, pero solo mostrarla cuando el usuario haga clic en "Ver Tabla"
@@ -329,27 +337,40 @@ def run_pipeline(data):
     socketio.emit("pipeline_output", {"message": "⏳ Comienzo del contador de tiempo"})
     print("Ejecutando Pipeline...")
     df = pipeline.run_stages(df)
+    df.count() # Forzar la finalización del pipeline
     
     # Finalización del pipeline
     socketio.emit("pipeline_output", {"message": "✅ Transformación NLP completada 👍"})
 
-    # df_html = df.limit(5).toPandas().to_html()
-    # socketio.emit("pipeline_output", 
-    #         {"message": "<button onclick='showTable2()' "
-    #         "class='view-table-btn'>📋 Ver Muestra Transformada </button><div id='df_input' style='display:none;'>" + df_html + "</div>"})
+    df_html = df.limit(8).toPandas().to_html()
+    socketio.emit("pipeline_output", 
+            {"message": "<button onclick='showTable2()' "
+            "class='view-table-btn'>📋 Ver Muestra Transformada </button><div id='df_input' style='display:none;'>" + df_html + "</div>"})
+    
     
     # 📥 Guardar archivo si la fuente era local
     if input_type == "file" and output_save == True:
-        output_filename = f"processed_{os.path.basename(input_data)}"
+        output_filename = f"{model_key}_processed_{os.path.basename(input_data)}"
         output_file_path = os.path.join(DATA_OUTPUT_DIR, output_filename)
 
         socketio.emit("pipeline_output", {"message": f"💾 Guardando {output_file_path}..."})
         # if num_partitions:
         #     socketio.emit("pipeline_output", {"message": f"Reduciendo y fusionando (coalesce) las particiones a {num_partitions} "})
         #     df = df.coalesce(num_partitions)
-        pipeline.save_to_local(df, output_file_path)
+        if save_parquet_only:
+            output_file_path = os.path.splitext(output_file_path)[0] + ".parquet"
+            pipeline.save_to_local(df, output_file_path, format="parquet")
+        else:
+            pipeline.save_to_local(df, output_file_path)
         socketio.emit("pipeline_output", {"message": f"✅ Guardado en {output_file_path}"})
-    
+
+    # else if input_type == "db" and output_save == True:
+        #........ guardar en base de datos
+
+    else:
+        df.take(1)
+
+        
     socketio.emit("pipeline_output", {"message": "⭐⭐⭐Pipeline finalizado 🚀"})
     socketio.emit("pipeline_output", {"message": f"⌛ Tiempo de ejecución final:{ time.time() - time_count} segundos "})
 
@@ -371,7 +392,7 @@ def get_spark_ui_url():
     return SPARK_UI_URL
 
 
-# 🚩 WebSocket: Detener la ejecución del pipeline cuando se abandona la página
+# 🚩 WebSocket: Detener la ejecución del pipeline 
 @socketio.on("stop_pipeline")
 def stop_pipeline():
     sid = request.sid
@@ -399,13 +420,13 @@ def stop_pipeline():
 import subprocess
 from flask import send_file, abort
 
-@socketio.on("disconnect")
-def on_disconnect():
-    sid = request.sid
-    pipeline = pipeline_sessions.pop(sid, None)
-    if pipeline:
-        pipeline.stop_pipeline()
-        print(f"🧹 Pipeline de {sid} detenido al desconectar.")
+# @socketio.on("disconnect")
+# def on_disconnect():
+#     sid = request.sid
+#     pipeline = pipeline_sessions.pop(sid, None)
+#     if pipeline:
+#         pipeline.stop_pipeline()
+#         print(f"🧹 Pipeline de {sid} detenido al desconectar.")
 
 
 @app.route('/download/<path:filename>')

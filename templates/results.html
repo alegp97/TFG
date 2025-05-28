@@ -123,16 +123,29 @@
         var outputDiv = document.getElementById("output");
     
         // Depuración para ver si WebSockets están funcionando
-        if (!sessionStorage.getItem("pipeline_running")) {
-            sessionStorage.setItem("pipeline_running", "true");
-            socket.emit("run_pipeline", {
-                input_type: "{{ input_type }}",
-                input_data: "{{ input_data }}",
-                model_key:  "{{ model_key }}",
-                output_save: "{{ output_save }}",
-                num_partitions: "{{ num_partitions }}"
-            });
-        }
+        //if (!sessionStorage.getItem("pipeline_running")) {
+        //    sessionStorage.setItem("pipeline_running", "true");
+        //    socket.emit("run_pipeline", {
+        //        input_type: "{{ input_type }}",
+        //        input_data: "{{ input_data }}",
+        //       model_key:  "{{ model_key }}",
+        //        output_save: "{{ output_save }}",
+        //        df_fraction: "{{ df_fraction }}",
+        //        save_parquet_only: "{{ save_parquet_only }}",
+        //        num_partitions: "{{ num_partitions }}"
+        //    });
+        //}
+
+        sessionStorage.setItem("pipeline_running", "true");
+        socket.emit("run_pipeline", {
+            input_type: "{{ input_type }}",
+            input_data: "{{ input_data }}",
+            model_key:  "{{ model_key }}",
+            output_save: "{{ output_save }}",
+            df_fraction: "{{ df_fraction }}",
+            save_parquet_only: "{{ save_parquet_only }}",
+            num_partitions: "{{ num_partitions }}"
+        });
     
         // Verificar si el servidor responde
         socket.on("pipeline_output", function(data) {
@@ -185,10 +198,19 @@
             sessionStorage.removeItem("pipeline_running");
             socket.emit("stop_pipeline");  
         }
+        
         // Detectar cuando el usuario cierra la página o navega fuera
-        window.addEventListener("beforeunload", function() {
-            stopPipeline();  
+        // window.addEventListener("beforeunload", function() {
+        //     stopPipeline();  
+        // });
+
+        window.addEventListener("load", function() {
+            if (performance.getEntriesByType("navigation")[0].type === "reload") {
+                sessionStorage.removeItem("pipeline_running");
+            }
         });
+
+
         // Interceptar clic en "Volver al Inicio" y detener el pipeline
         document.querySelector(".back-btn").addEventListener("click", function(event) {
             stopPipeline();
