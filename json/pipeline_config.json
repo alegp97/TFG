@@ -1,5 +1,60 @@
 {
     "models": {
+        "custom": {
+            "pipeline_name": "CUSTOM",
+            "stages": [
+                {
+                "name": "document_assembler",
+                "params": {
+                    "inputCol": "TextColumn1",
+                    "outputCol": "document"
+                }
+                },
+                {
+                "name": "sentence_detector",
+                "params": {
+                    "inputCols": ["document"],
+                    "outputCol": "sentence"
+                }
+                },
+                {
+                "name": "marian_transformer",
+                "params": {
+                    "model_name": "opus_mt_en_es",
+                    "inputCol": "sentence",
+                    "outputCol": "translated_text_es"
+                }
+                },
+                {
+                "name": "universal_sentence_encoder",
+                "params": {
+                    "model_name": "tfhub_use",
+                    "lang": "en",
+                    "inputCols": ["document"],
+                    "outputCol": "sentence_embeddings"
+                }
+                },
+                {
+                "name": "sentiment_dl_model",
+                "params": {
+                    "model_name": "sentimentdl_use_imdb",
+                    "lang": "en",
+                    "inputCols": ["sentence_embeddings"],
+                    "outputCol": "sentiment"
+                }
+                },
+                {
+                "name": "finisher",
+                "params": {
+                    "inputCols": ["translated_text_es", "sentiment"],
+                    "outputCols": ["translation_es", "sentiment"],
+                    "includeMetadata": false,
+                    "cleanAnnotations": true,
+                    "outputAsArray": false
+                }
+                }
+            ]
+            },
         "marian_translation_en_fr": {
             "pipeline_name": "Marian Translation",
             "stages": [
@@ -22,7 +77,7 @@
                 {
                     "name": "marian_transformer",
                     "params": {
-                        "model_name": "opus_mt_en_fr_xx_3.1",
+                        "model_name": "opus_mt_en_fr",
                         "inputCol": "sentences",
                         "outputCol": "translated_text_fr"
                     }
@@ -31,7 +86,7 @@
                     "name": "finisher",
                     "params": {
                         "inputCols": [
-                            "translated_text_es"
+                            "translated_text_fr"
                         ],
                         "outputCols": [
                             "translation_fr"
@@ -63,7 +118,7 @@
                 {
                     "name": "marian_transformer",
                     "params": {
-                        "model_name": "marian_finetuned_kde4_english_spanish_en",
+                        "model_name": "opus_mt_en_es",
                         "inputCol": "sentences",
                         "outputCol": "translated_text_es"
                     }
@@ -156,7 +211,7 @@
                 {
                     "name": "document_assembler",
                     "params": {
-                        "inputCol": "text",
+                        "inputCol": "content",
                         "outputCol": "document"
                     }
                 },
@@ -180,6 +235,19 @@
                         ],
                         "outputCol": "class"
                     }
+                },
+                {
+                    "name": "finisher",
+                    "params": {
+                        "inputCols": [
+                            "class"
+                        ],
+                        "outputCols": [
+                            "class"
+                        ],
+                        "cleanAnnotations": true,
+                        "outputAsArray": false
+                    }
                 }
             ]
         },
@@ -189,7 +257,7 @@
                 {
                     "name": "document_assembler",
                     "params": {
-                        "inputCol": "TextColumn1",
+                        "inputCol": "content",
                         "outputCol": "document"
                     }
                 },
@@ -214,6 +282,19 @@
                         ],
                         "outputCol": "sentiment"
                     }
+                },
+                {
+                    "name": "finisher",
+                    "params": {
+                        "inputCols": [
+                            "sentiment"
+                        ],
+                        "outputCols": [
+                            "finished_sentiment"
+                        ],
+                        "includeMetadata": false,
+                        "cleanAnnotations": true
+                    }
                 }
             ]
         },
@@ -223,7 +304,7 @@
                 {
                     "name": "document_assembler",
                     "params": {
-                        "inputCol": "TextColumn1",
+                        "inputCol": "content",
                         "outputCol": "document"
                     }
                 },
@@ -283,6 +364,21 @@
                             "ner"
                         ],
                         "outputCol": "ner_chunk"
+                    }
+                },
+                {
+                    "name": "finisher",
+                    "params": {
+                        "inputCols": [
+                            "ner_chunk",
+                            "ner"
+                        ],
+                        "outputCols": [
+                            "finished_ner_chunk",
+                            "finished_ner"
+                        ],
+                        "includeMetadata": false,
+                        "outputAsArray": false
                     }
                 }
             ]
@@ -374,7 +470,7 @@
                     }
                 },
                 {
-                    "name": "roberta_ner_roberta_large_ner_english_en_3.4.2",
+                    "name": "roberta_ner_codebert_mt4ts",
                     "params": {
                         "inputCols": [
                             "chunk_doc",

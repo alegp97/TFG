@@ -22,14 +22,16 @@ from sparkmeasure import StageMetrics
 import sparknlp
 from sparknlp.pretrained import ResourceDownloader
 
+
+
 # Spark NLP - base & preprocesamiento
 from sparknlp.base import DocumentAssembler, Finisher, TokenAssembler
 from sparknlp.annotator import (
     GPT2Transformer,
     LLAMA2Transformer,
     BertEmbeddings,
+    BertForSequenceClassification,
     SentimentDLModel, 
-    #QuestionAnswering, 
     UniversalSentenceEncoder,
     SentenceDetectorDLModel,
     WordEmbeddingsModel,
@@ -53,7 +55,12 @@ from flask import current_app
 from flask_socketio import SocketIO
 
 # Configuración personalizada
-from settings import HDFS_BASE_DIR, HDFS_NAMENODE, MODELS_DIR, BASE_DIR
+from settings import HDFS_BASE_DIR, HDFS_NAMENODE, MODELS_DIR, BASE_DIR, SAVE_EXECUTION_METADATA
+
+import threading
+_SPARK_LOCK = threading.Lock()
+
+
 
 class PipelineNLP:
 
@@ -70,11 +77,11 @@ class PipelineNLP:
         """
         self.source = source
         self.input_data = input_data
+        self.spark = None
         self.spark_config = spark_config
         self.pipeline_config = pipeline_config
         self.debug = debug
-
-        #self.model_manager = ModelManager(base_path="models_nlp_local")
+        
 
         self.execution_metadata = {
             "start_time": None,
@@ -89,13 +96,12 @@ class PipelineNLP:
             "input_rows": None,
             "partitions_before": None,
             "partitions_after": None,
-            "executors_memory": {},
+            #"executors_memory": {},
             "read_time_sec": None,
             "write_time_sec": None,
             "stage_timings": [],
             "error": None
         }
-    
     
     def init_spark_session(self):
         """Inicializa la sesión de Spark NLP con una configuración completamente dinámica desde un JSON."""
@@ -147,6 +153,11 @@ class PipelineNLP:
                 shutil.rmtree(spark_tmp_path)
             spark_builder = spark_builder.config("spark.local.dir", spark_tmp_path)
 
+            spark_builder = (spark_builder
+                .config("spark.hadoop.fs.defaultFS", HDFS_NAMENODE)
+                .config("spark.jsl.settings.pretrained.cache_folder", f"{HDFS_BASE_DIR}/cache_pretrained")
+                .config("spark.jsl.settings.storage.cluster_tmp_dir", f"{HDFS_BASE_DIR}/tmp"))
+
 
             # Crear la sesión de Spark con la configuración completa
             self.spark = spark_builder.getOrCreate()
@@ -196,13 +207,47 @@ class PipelineNLP:
         return self.spark
 
     def stop_pipeline(self):
-        """Detiene la sesión de Spark."""
-        if self.spark:
-            self.spark.catalog.clearCache()
-            self.spark.stop()
-            self.spark = None
-            print("🧹 SparkSession limpiada y cerrada.")
-        gc.collect()
+        """Detiene Spark, elimina modelos cargados y libera memoria para evitar errores de broadcast."""
+        socketio = current_app.extensions["socketio"]
+        try:
+            if hasattr(self, "spark") and self.spark:
+                # Limpiar caché y cerrar SparkSession
+                socketio.emit("pipeline_output", {"message": "🛑 Cerrando SparkSession..."})
+                self.spark.catalog.clearCache()
+                self.spark.stop()
+                self.spark = None
+
+            if SparkContext._active_spark_context is not None:
+                socketio.emit("pipeline_output", {"message": "🔨 Forzando cierre de SparkContext..."})
+                SparkContext._active_spark_context.stop()
+                SparkContext._active_spark_context = None
+
+            # Limpiar referencias a modelos si existen
+            for attr_name in dir(self):
+                attr_value = getattr(self, attr_name)
+                if isinstance(attr_value, (PipelineModel, Pipeline)):
+                    delattr(self, attr_name)
+
+            # Limpiar sys.modules en caso de módulos cargados dinámicamente
+            import sys
+            modules_to_clear = ["UniversalSentenceEncoder", "SentimentDLModel", "MarianTransformer"]
+            for mod in modules_to_clear:
+                if mod in sys.modules:
+                    del sys.modules[mod]
+
+            # Limpieza agresiva de memoria
+            socketio.emit("pipeline_output", {"message": "🧹 Liberando memoria y recolectando basura..."})
+            gc.collect()
+            time.sleep(2)
+
+            socketio.emit("pipeline_output", {"message": "✅ Spark y memoria limpiados correctamente."})
+            print("🧼 Spark NLP cerrado completamente.")
+
+        except Exception as e:
+            error_msg = f"⚠️ Error durante stop_pipeline: {str(e)}"
+            socketio.emit("pipeline_output", {"message": error_msg})
+            print(error_msg)
+
     
     def get_execution_metadata(self):
         """Devuelve los metadatos de ejecución, asegurando que todo sea JSON serializable."""
@@ -268,12 +313,12 @@ class PipelineNLP:
         # ----- identificador de run -----
         ts = datetime.datetime.now().strftime("%H_%M_%S_%d_%m_%Y")
         rid = str(uuid.uuid4())[:8]
-        run_tag = f"{ts}_{rid}"                       # para columnas y prints
-        run_dir = f"{base_dir}/run_{run_tag}"         # dir hdfs final
+        run_tag = f"{ts}_{rid}"
+        run_dir = f"{base_dir}/run_{run_tag}"
 
         try:
             # ========== 1· Métricas de stage ========== #
-            self.stg.end()   # cierra sparkmeasure
+            self.stg.end()
 
             stage_df = (
                 self.stg.create_stagemetrics_DF()     
@@ -290,7 +335,7 @@ class PipelineNLP:
             )
 
             (stage_df
-                .coalesce(1)     
+                .coalesce(1)
                 .write
                 .mode("error")
                 .option("mapreduce.fileoutputcommitter.marksuccessfuljobs", "false")
@@ -307,6 +352,28 @@ class PipelineNLP:
                     .json(f"{run_dir}/annotators"))
 
             # ========== 3· execution_metadata.json ==== #
+
+            # 🧠 Añadir uso medio de memoria por ejecutor
+            # try:
+            #     java_map = self.spark.sparkContext._jsc.sc().getExecutorMemoryStatus()
+            #     executor_infos = java_map.entrySet().toArray()  
+            #     memory_usages = []
+            #     for entry in executor_infos:
+            #         memory_bytes = entry[1]._1()  # memoria usada en bytes
+            #         memory_usages.append(memory_bytes)
+
+            #     if memory_usages:
+            #         avg_memory_MB = sum(memory_usages) / len(memory_usages) / 1_048_576
+            #         self.execution_metadata["executors_memory"] = {"avg_MB": round(avg_memory_MB, 2)}
+            #     else:
+            #         self.execution_metadata["executors_memory"] = {"avg_MB": None}
+            # except Exception as e:
+            #     self.execution_metadata["executors_memory"] = {
+            #         "avg_MB": None,
+            #         "error": str(e)
+            #     }
+
+            # Guardar en local
             local_tmp = f"/tmp/execution_metadata_{rid}.json"
             with open(local_tmp, "w", encoding="utf-8") as f:
                 json.dump(self.get_execution_metadata(), f,
@@ -321,13 +388,12 @@ class PipelineNLP:
                 self.spark._jvm.org.apache.hadoop.fs.Path(local_tmp),
                 self.spark._jvm.org.apache.hadoop.fs.Path(f"{run_dir}/execution_metadata.json"))
 
-            print(f"Metadatos de ejecución guardados en: {run_dir}/")
+            print(f" 💾📋 Metadatos de ejecución guardados en: {run_dir}/")
             return f"{run_dir}/execution_metadata.json"
 
         except Exception as e:
             print(f"❌ Error al guardar metadatos/métricas: {e}")
             raise
-
 
 
     def load_from_sql(self):
@@ -525,18 +591,26 @@ class PipelineNLP:
             socketio.emit("pipeline_output", {"message": "🚀 Ajustando (fit)..."})
             fit_start = time.time()
             model = nlp_pipeline.fit(df)
-            df.take(1)                             # fuerza ejecución
+            df.count()                            # Forzar ejecución
             fit_end = time.time()
 
             # —— TRANSFORM
             socketio.emit("pipeline_output", {"message": "🚀 Transformando (transform)..."} )
             transform_start = time.time()
             transformed_df = model.transform(df)
-            transformed_df.take(1)                 # fuerza ejecución
+            transformed_df.count()                 # Forzar la finalización del pipeline
             transform_end = time.time()
 
             # ───────────────────────────────────────────────────────────
-            # 4) Guardar timings en execution_metadata
+            # 4) Limpieza de columnas temporales
+            # ───────────────────────────────────────────────────────────
+            for col in document_columns:
+                if col in transformed_df.columns:
+                    transformed_df = transformed_df.drop(col)      
+
+
+            # ───────────────────────────────────────────────────────────
+            # 5) Guardar timings en execution_metadata
             # ───────────────────────────────────────────────────────────
             self.execution_metadata["stage_timings"].extend([
                 {"stage": "fit",       "duration_sec": round(fit_end - fit_start, 3)},
@@ -544,30 +618,22 @@ class PipelineNLP:
             ])
             self.execution_metadata["partitions_after"] = transformed_df.rdd.getNumPartitions()
 
-            # ───────────────────────────────────────────────────────────
-            # 5) Limpieza de columnas temporales
-            # ───────────────────────────────────────────────────────────
-            for col in document_columns:
-                if col in transformed_df.columns:
-                    transformed_df = transformed_df.drop(col)
-
-            # ───────────────────────────────────────────────────────────
-            # 6) Finalizar metadatos de ejecución
-            # ───────────────────────────────────────────────────────────
             self.execution_metadata["end_time"] = datetime.datetime.now()
             self.execution_metadata["duration"] = (
                 self.execution_metadata["end_time"] - self.execution_metadata["start_time"]
             ).total_seconds()
             self.execution_metadata["output_schema"] = transformed_df.schema.json()
 
+
             # ───────────────────────────────────────────────────────────
-            # 7) Guardar todo (metadatos + métricas + annotators)
+            # 6) Guardar todo (metadatos + métricas + annotators)
             # ───────────────────────────────────────────────────────────
-            self.save_execution_metadata(
-                model    = model,
-                df_input = df,                      # se usa para cronometrar annotators
-                base_dir = None                     # --> HDFS_BASE_DIR/logs_metadata
-            )
+            if SAVE_EXECUTION_METADATA:
+                self.save_execution_metadata(
+                    model    = model,
+                    df_input = df,                      # se usa para cronometrar annotators
+                    base_dir = None                     # --> HDFS_BASE_DIR/logs_metadata
+                )
 
             # ───────────────────────────────────────────────────────────
             return transformed_df
@@ -593,12 +659,20 @@ class PipelineNLP:
             if local_path.exists():
                 socketio.emit("pipeline_output",
                             {"message": f"📦 Cargando modelo local: {local_path}"})
-                return loader.load(str(local_path), *args, **kwargs)
+                model = loader.load(str(local_path), *args, **kwargs)
             else:
                 socketio.emit("pipeline_output",
                             {"message": f"💡 Modelo local no encontrado, usando "
                                         f"pretrained('{model_name}')"})
-                return loader.pretrained(model_name, lang, *args, **kwargs)
+                model = loader.pretrained(model_name, lang, *args, **kwargs)
+            
+            if model is None:
+                socketio.emit("pipeline_output",
+                            {"message": f"❌ No se pudo cargar el modelo '{model_name}' ni local ni pretrained. Puede que el nombre sea incorrecto."})
+                raise ValueError(f"El modelo '{model_name}' no se pudo cargar ni local ni pretrained.")
+            else:
+                return model
+            
     
         try:
             # Acceder a la instancia de Flask-SocketIO para emitir logs en tiempo real
@@ -629,7 +703,6 @@ class PipelineNLP:
 
                 if not name:
                 
-                 
                     socketio.emit("pipeline_output", {"message": "❌ Error: Falta 'name' en una etapa."})
                     raise ValueError("Falta 'name' en una etapa.")
 
@@ -803,36 +876,35 @@ class PipelineNLP:
 
                 # 🌍 Traducción con Marian Transformer
                 elif name.startswith("marian_transformer"):
-                    input_col  = params["inputCol"]
+                    input_cols = params.get("inputCols") or [params["inputCol"]]
                     output_col = params["outputCol"]
                     model_name = params["model_name"]
+                    lang = params.get("lang", "xx")
 
-                    marian_transformer = _local_or_pretrained(MarianTransformer,
-                                                            model_name) \
-                        .setInputCols(input_col) \
+                    marian_transformer = _local_or_pretrained(loader=MarianTransformer,
+                                                            model_name=model_name, lang=lang) \
+                        .setInputCols(input_cols) \
                         .setOutputCol(output_col)
 
                     stages.append(marian_transformer)
                     socketio.emit("pipeline_output",
                                 {"message": f"🌍 Marian '{model_name}' listo → '{output_col}' ✅"})
 
-
-                # 🌍 Traducción con Marian Transformer
-                elif name.startswith("marian_transformer"):
-                    input_col  = params["inputCol"]
+                elif name in ("bert_for_sequence_classification", "bert_sequence_classifier", "bert_classifier"):
+                    input_cols = params["inputCols"]
+                    if isinstance(input_cols, str):
+                        input_cols = [input_cols]
                     output_col = params["outputCol"]
                     model_name = params["model_name"]
+                    lang = params.get("lang", "en")
 
-                    marian_transformer = _local_or_pretrained(MarianTransformer,
-                                                            model_name) \
-                        .setInputCols(input_col) \
+                    clf = _local_or_pretrained(BertForSequenceClassification, model_name, lang) \
+                        .setInputCols(input_cols) \
                         .setOutputCol(output_col)
 
-                    stages.append(marian_transformer)
+                    stages.append(clf)
                     socketio.emit("pipeline_output",
-                                {"message": f"🌍 Marian '{model_name}' listo → '{output_col}' ✅"})
-
-
+                                {"message": f"🧠 BERT seq-class '{model_name}' listo → '{output_col}' ✅"})
                 # 🦙 LLaMA 2 (generación)
                 elif name.startswith("llama"):
                     input_col  = params["inputCol"]
@@ -861,22 +933,6 @@ class PipelineNLP:
                     stages.append(gpt2)
                     socketio.emit("pipeline_output",
                                 {"message": f"🤖 GPT-2 '{model_name}' listo → '{output_col}' ✅"})
-
-
-                # # 📚 Electra QA (preguntas & respuestas)
-                # elif name.startswith("electra_qa"):
-                #     input_context = params["contextCol"]
-                #     input_question = params["questionCol"]
-                #     output_col     = params["outputCol"]
-                #     model_name     = name                            # p.e. electra_qa_base
-
-                #     electra = _local_or_pretrained(QuestionAnswering, model_name) \
-                #         .setInputCols([input_context, input_question]) \
-                #         .setOutputCol(output_col)
-
-                #     stages.append(electra)
-                #     socketio.emit("pipeline_output",
-                #                 {"message": f"📚 Electra QA '{model_name}' listo → '{output_col}' ✅"})
 
 
                 # 🧬 RoBERTa  

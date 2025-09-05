@@ -14,10 +14,6 @@ app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*") 
 
 
-#  Mostrar las rutas configuradas
-print(f"📂 DATA_INPUT_DIR: {DATA_INPUT_DIR}")
-print(f"📂 DATA_OUTPUT_DIR: {DATA_OUTPUT_DIR}")
-
 
 """ 
 ############################                         ##############################
@@ -68,7 +64,7 @@ def save_spark_config():
 
 """ 
 ############################                         ##############################
-########################### FUNCIONES DEL CONDIG HTML #############################
+########################### FUNCIONES DEL CONFIG HTML #############################
 ############################                         ##############################
 """
 
@@ -337,15 +333,14 @@ def run_pipeline(data):
     socketio.emit("pipeline_output", {"message": "⏳ Comienzo del contador de tiempo"})
     print("Ejecutando Pipeline...")
     df = pipeline.run_stages(df)
-    df.count() # Forzar la finalización del pipeline
     
     # Finalización del pipeline
     socketio.emit("pipeline_output", {"message": "✅ Transformación NLP completada 👍"})
 
-    df_html = df.limit(8).toPandas().to_html()
+    df_html2 = df.limit(8).toPandas().to_html()
     socketio.emit("pipeline_output", 
             {"message": "<button onclick='showTable2()' "
-            "class='view-table-btn'>📋 Ver Muestra Transformada </button><div id='df_input' style='display:none;'>" + df_html + "</div>"})
+            "class='view-table-btn'>📋 Ver Muestra Transformada </button><div id='df_input' style='display:none;'>" + df_html2 + "</div>"})
     
     
     # 📥 Guardar archivo si la fuente era local
@@ -378,7 +373,7 @@ def run_pipeline(data):
     
     # 📋 Emitir evento para mostrar el botón para ver el report
     socketio.emit("show_report_button", {"message": "Ver Reporte Final", "redirect_url": url_for("report")})
-    stop_pipeline()  # Detener el pipeline después de la ejecución
+    # stop_pipeline()  # Detener el pipeline después de la ejecución
 
 
 @app.route('/report.html')
@@ -419,15 +414,6 @@ def stop_pipeline():
 
 import subprocess
 from flask import send_file, abort
-
-# @socketio.on("disconnect")
-# def on_disconnect():
-#     sid = request.sid
-#     pipeline = pipeline_sessions.pop(sid, None)
-#     if pipeline:
-#         pipeline.stop_pipeline()
-#         print(f"🧹 Pipeline de {sid} detenido al desconectar.")
-
 
 @app.route('/download/<path:filename>')
 def download_file(filename):
@@ -605,13 +591,13 @@ def preview_file_output(filename):
 
 
 
-@app.route('/favicon.ico')
-def favicon():
-    return '', 204 
+# @app.route('/favicon.ico')
+# def favicon():
+#     return '', 204 
 
 
 ###################################################################################
 ########################### ⭐EJECUCION MAIN DE APP⭐ ############################
 ###################################################################################
 if __name__ == "__main__":
-    socketio.run(app, host=IP, port=PORT, debug=False, allow_unsafe_werkzeug=True)
+    socketio.run(app, host=IP, port=PORT, debug=False, allow_unsafe_werkzeug=True, use_reloader=False)

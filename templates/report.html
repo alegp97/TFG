@@ -27,8 +27,8 @@
     <h2>Resultados y Métricas</h2>
     <p><strong>⏱️ Tiempo Total:</strong> <span id="duracion_total">-</span> segundos</p>
     <p><strong>🧩 Particiones:</strong> <span id="particiones">-</span></p>
-    <p><strong>🧠 Memoria por ejecutor:</strong></p>
-    <pre id="memoria_ejecutores">-</pre>
+    <!-- <p><strong>🧠 Memoria por ejecutor:</strong></p>
+    <pre id="memoria_ejecutores">-</pre> -->
 
     <h3>⏱️ Tiempos por etapa</h3>
     <table id="tabla_etapas">
@@ -52,7 +52,7 @@
             .then(metadata => {
                 document.getElementById("duracion_total").innerText = metadata.duration;
                 document.getElementById("particiones").innerText = metadata.partitions_before + " → " + metadata.partitions_after;
-                document.getElementById("memoria_ejecutores").innerText = JSON.stringify(metadata.executors_memory, null, 2);
+                //document.getElementById("memoria_ejecutores").innerText = JSON.stringify(metadata.executors_memory, null, 2);
                 document.getElementById("esquema_entrada").innerText = JSON.stringify(JSON.parse(metadata.input_schema), null, 2);
                 document.getElementById("esquema_salida").innerText = JSON.stringify(JSON.parse(metadata.output_schema), null, 2);
 

@@ -16,7 +16,7 @@ DATABASE CONF + SQL EXAMPLE:
     }
 }
 
-SPARK CONF EXAMPLE:
+SPARK CONF EXAMPLES:
 
 {
     "spark": {
